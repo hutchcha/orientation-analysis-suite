@@ -54,7 +54,7 @@ from scipy.ndimage import gaussian_filter
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
-from membrane_analysis.core.io import cached_compute, save_txt
+from membrane_analysis.core.io import cached_compute, save_txt, save_per_system
 from membrane_analysis.core.config import (
     get_output_dir, get_system_names, get_selection,
     get_stride, get_sim_length, is_force_recompute, get_analysis_params,
@@ -287,6 +287,7 @@ def compute(cfg, universes):
                 "rotation":         rot,
                 "membrane_normal":  normal,
             }
+        save_per_system(results, outdir, ANALYSIS_KEY)
         return results
 
     return cached_compute(cache, _run, force_recompute=force)
@@ -401,3 +402,31 @@ def plot(cfg, results):
                       "Tilt (°)",     os.path.join(outdir, "tilt_comparison.png"),     ma_window=ma)
     overlay_line_plot({n: results[n]["rotation"] for n in names}, sim_us,
                       "Rotation (°)", os.path.join(outdir, "rotation_comparison.png"), ma_window=ma)
+
+    # Per-system individual plots
+    for name in names:
+        # Polar density
+        fig_p, ax_p = plt.subplots(figsize=(5, 5),
+                                   subplot_kw={"projection": "polar"},
+                                   constrained_layout=True)
+        polar_density_plot(results[name]["rotation"], results[name]["tilt"], ax_p)
+        ax_p.set_title(name, fontsize=14, pad=20)
+        save_figure(fig_p, os.path.join(outdir, name, "polar_density.png"))
+
+        # Tilt time series
+        fig_t_s, ax_t_s = plt.subplots(figsize=(5, 4), constrained_layout=True)
+        time = np.linspace(0, sim_us, len(results[name]["tilt"]))
+        line_plot(time, results[name]["tilt"], ax_t_s, title=name,
+                  color="black", z=1, ma_window=ma, ma_color="red", ma_z=2)
+        ax_t_s.set_xlabel("Time (μs)", fontsize=14)
+        ax_t_s.set_ylabel("Tilt (°)", fontsize=14)
+        save_figure(fig_t_s, os.path.join(outdir, name, "tilt_timeseries.png"))
+
+        # Rotation time series
+        fig_r_s, ax_r_s = plt.subplots(figsize=(5, 4), constrained_layout=True)
+        time = np.linspace(0, sim_us, len(results[name]["rotation"]))
+        line_plot(time, results[name]["rotation"], ax_r_s, title=name,
+                  color="black", z=1, ma_window=ma, ma_color="red", ma_z=2)
+        ax_r_s.set_xlabel("Time (μs)", fontsize=14)
+        ax_r_s.set_ylabel("Rotation (°)", fontsize=14)
+        save_figure(fig_r_s, os.path.join(outdir, name, "rotation_timeseries.png"))

@@ -28,7 +28,7 @@ import os
 import numpy as np
 import pandas as pd
 
-from membrane_analysis.core.io import cached_compute
+from membrane_analysis.core.io import cached_compute, save_per_system
 from membrane_analysis.core.config import (
     get_output_dir, get_system_names, get_system, get_selection,
     get_stride, get_sim_length, is_force_recompute, get_analysis_params,
@@ -174,6 +174,7 @@ def compute(cfg, universes):
             stride = get_stride(cfg, name, ANALYSIS_KEY)
             print(f"  [{name}] Computing APL (stride={stride})...")
             results[name] = _compute_one(universes[name], apl_sel, lipid_hg, stride)
+        save_per_system(results, outdir, ANALYSIS_KEY)
         return results
 
     return cached_compute(cache, _run, force_recompute=force)
@@ -204,3 +205,19 @@ def plot(cfg, results):
     fig.supxlabel("Time (μs)", fontsize=20)
     fig.supylabel("Area per Lipid (Å²)", fontsize=20)
     save_figure(fig, os.path.join(outdir, "apl_all.png"))
+
+    # Per-system individual plots
+    for name in names:
+        df   = results[name]
+        time = np.linspace(0, sim_us, len(df))
+        fig_s, ax_s = plt.subplots(figsize=(5, 4), constrained_layout=True)
+        for col in plot_cols:
+            if col not in df.columns:
+                continue
+            c = LIPID_COLORS.get(col, "gray")
+            line_plot(time, df[col].values, ax_s, title=name, color=c, z=1,
+                      label=col, ma_window=ma, ma_color=c, ma_z=2)
+        ax_s.legend(loc="upper right", fontsize=10, frameon=False)
+        ax_s.set_xlabel("Time (μs)", fontsize=14)
+        ax_s.set_ylabel("Area per Lipid (Å²)", fontsize=14)
+        save_figure(fig_s, os.path.join(outdir, name, "apl.png"))

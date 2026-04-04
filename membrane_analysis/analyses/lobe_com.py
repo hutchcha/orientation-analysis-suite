@@ -16,7 +16,7 @@ import pandas as pd
 from tqdm import tqdm
 from scipy.stats import gaussian_kde
 
-from membrane_analysis.core.io import cached_compute
+from membrane_analysis.core.io import cached_compute, save_per_system
 from membrane_analysis.core.config import (
     get_output_dir, get_system_names, get_selection, get_system,
     get_stride, get_sim_length, is_force_recompute, get_analysis_params,
@@ -64,6 +64,7 @@ def compute(cfg, universes):
             stride = get_stride(cfg, name, ANALYSIS_KEY)
             print(f"  [{name}] Computing lobe COM distances (stride={stride})...")
             results[name] = _compute_one(universes[name], l1, l2, mem_sel, stride)
+        save_per_system(results, outdir, ANALYSIS_KEY)
         return results
 
     return cached_compute(cache, _run, force_recompute=force)
@@ -134,3 +135,44 @@ def plot(cfg, results):
     fig2.supxlabel("Z_Lobe1 (Å)", fontsize=20)
     fig2.supylabel("Z_Lobe2 (Å)", fontsize=20)
     save_figure(fig2, os.path.join(outdir, "lobe_contour_all.png"))
+
+    # Per-system individual plots
+    for name in names:
+        df   = results[name]
+        time = np.linspace(0, sim_us, len(df))
+
+        # Time series: both lobes on same axes
+        fig_s, ax_s = plt.subplots(figsize=(5, 4), constrained_layout=True)
+        line_plot(time, df["Lobe1"].values, ax_s, title=name,
+                  color="orange", z=1, label="Lobe1",
+                  ma_window=ma, ma_color="orange", ma_z=2)
+        line_plot(time, df["Lobe2"].values, ax_s,
+                  color="blue", z=1, label="Lobe2",
+                  ma_window=ma, ma_color="blue", ma_z=2)
+        ax_s.legend(fontsize=12, frameon=False)
+        ax_s.set_xlabel("Time (μs)", fontsize=14)
+        ax_s.set_ylabel("Z_lobe (Å)", fontsize=14)
+        save_figure(fig_s, os.path.join(outdir, name, "lobe_timeseries.png"))
+
+        # KDE contour plot
+        lb1 = df["Lobe1"].values
+        lb2 = df["Lobe2"].values
+        x   = lb1[np.isfinite(lb1) & np.isfinite(lb2)]
+        y   = lb2[np.isfinite(lb1) & np.isfinite(lb2)]
+        if len(x) >= 10:
+            fig_c, ax_c = plt.subplots(figsize=(5, 4), constrained_layout=True)
+            kde  = gaussian_kde(np.vstack([x, y]))
+            xg   = np.linspace(x.min() - 5, x.max() + 5, 80)
+            yg   = np.linspace(y.min() - 5, y.max() + 5, 80)
+            X, Y = np.meshgrid(xg, yg)
+            Z    = kde(np.vstack([X.ravel(), Y.ravel()])).reshape(X.shape)
+            Z    = Z / Z.max()
+            Z[Z < 0.02] = np.nan
+            cf = ax_c.contourf(X, Y, Z, levels=np.linspace(0.02, 1.0, 10),
+                               vmin=0.02, vmax=1.0, cmap="viridis")
+            style_axes(ax_c, title=name)
+            fig_c.colorbar(cf, ax=ax_c, orientation="vertical",
+                           fraction=0.02, pad=0.02, label="Probability")
+            ax_c.set_xlabel("Z_Lobe1 (Å)", fontsize=14)
+            ax_c.set_ylabel("Z_Lobe2 (Å)", fontsize=14)
+            save_figure(fig_c, os.path.join(outdir, name, "lobe_contour.png"))

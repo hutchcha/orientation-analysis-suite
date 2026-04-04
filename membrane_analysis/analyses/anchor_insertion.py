@@ -9,7 +9,7 @@ import os
 import numpy as np
 from tqdm import tqdm
 
-from membrane_analysis.core.io import cached_compute
+from membrane_analysis.core.io import cached_compute, save_per_system
 from membrane_analysis.core.config import (
     get_output_dir, get_system_names, get_selection,
     get_stride, get_sim_length, is_force_recompute, get_analysis_params,
@@ -49,6 +49,7 @@ def compute(cfg, universes):
             stride = get_stride(cfg, name, ANALYSIS_KEY)
             print(f"  [{name}] Computing anchor insertion depth (stride={stride})...")
             results[name] = _compute_one(universes[name], anchor_sel, membrane_sel, stride)
+        save_per_system(results, outdir, ANALYSIS_KEY)
         return results
 
     return cached_compute(cache, _run, force_recompute=force)
@@ -73,3 +74,13 @@ def plot(cfg, results):
 
     overlay_line_plot(results, sim_us, "Insertion Depth (Å)",
                       os.path.join(outdir, "anchor_insertion_comparison.png"), ma_window=ma)
+
+    # Per-system individual plots
+    for name in names:
+        fig_s, ax_s = plt.subplots(figsize=(5, 4), constrained_layout=True)
+        time = np.linspace(0, sim_us, len(results[name]))
+        line_plot(time, results[name], ax_s, title=name,
+                  color="black", z=1, ma_window=ma, ma_color="red", ma_z=2)
+        ax_s.set_xlabel("Time (μs)", fontsize=14)
+        ax_s.set_ylabel("Insertion Depth (Å)", fontsize=14)
+        save_figure(fig_s, os.path.join(outdir, name, "anchor_insertion.png"))
