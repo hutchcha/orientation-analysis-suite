@@ -325,7 +325,7 @@ def plot(cfg, results):
             )
 
         # Polar, scatter, time series (always)
-        plot_polar_clustered(rot, tilt, clusters,
+        plot_polar_clustered(tilt, rot, clusters,
                              os.path.join(outdir, f"{name}_hdbscan_polar.png"),
                              label=f"{name} HDBSCAN")
         plot_scatter_clustered(tilt, rot, labels, clusters,
@@ -340,7 +340,7 @@ def plot(cfg, results):
         km_clust = km["clusters"]
         km_labs  = km["labels"]
 
-        plot_polar_clustered(rot, tilt, km_clust,
+        plot_polar_clustered(tilt, rot, km_clust,
                              os.path.join(outdir, f"{name}_kmeans_polar.png"),
                              label=f"{name} K-means")
         plot_scatter_clustered(tilt, rot, km_labs, km_clust,

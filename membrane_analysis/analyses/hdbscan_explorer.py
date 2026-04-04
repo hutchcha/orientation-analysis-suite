@@ -320,15 +320,15 @@ def plot_scatter_clustered(tilt, rot, labels, clusters, outpath, label=""):
     # noise first (background)
     noise_mask = labels == -1
     if noise_mask.any():
-        ax.scatter(rot[noise_mask], tilt[noise_mask], s=1, c="lightgrey",
-                   alpha=0.3, rasterized=True, label="noise", zorder=1)
+        ax.scatter(rot[noise_mask], tilt[noise_mask], s=3, c="silver",
+                   alpha=0.5, rasterized=True, label="noise", zorder=1)
 
     # clusters on top
     for c in clusters:
         lab  = c["label"]
         mask = labels == lab
         color = _cluster_color(lab)
-        ax.scatter(rot[mask], tilt[mask], s=2, c=color, alpha=0.5,
+        ax.scatter(rot[mask], tilt[mask], s=4, c=color, alpha=0.6,
                    rasterized=True, label=f"cluster {lab} ({c['pop_fraction']:.1%})",
                    zorder=2)
         # mark centre
