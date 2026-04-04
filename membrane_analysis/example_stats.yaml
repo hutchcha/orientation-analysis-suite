@@ -1,0 +1,109 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Statistical Analysis Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+# This file configures downstream statistical analyses (clustering, GMM,
+# kinetics) that operate on data computed by the main pipeline.
+#
+# Usage:
+#   run-analysis config.yaml --stats stats.yaml
+#
+# The main config.yaml defines systems and trajectories.
+# This file defines which computed features to combine and how to analyze them.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Feature Sets — named collections of computed observables
+# ─────────────────────────────────────────────────────────────────────────────
+# Each feature set specifies:
+#   features  — list of keys referencing cached analysis outputs
+#   transform — coordinate transform before analysis
+#
+# Feature key format:
+#   "analysis_key"           — bare 1D array (rmsd, anchor_insertion, etc.)
+#   "analysis_key.sub_key"   — sub-field from a dict/DataFrame output
+#                              (tilt_rotation.tilt, lobe_com.Lobe1, etc.)
+#
+# Transforms:
+#   "auto"         — auto-detect from feature types (default)
+#   "none"         — column-stack as-is (Euclidean features)
+#   "unit_sphere"  — 2 angular features (rotation, tilt) → 3D Cartesian unit vectors
+#   "spherical"    — 2 angular + 1+ scalar → spherical-to-Cartesian
+#                    First scalar is used as the radial coordinate.
+
+feature_sets:
+  # Orientation on the unit sphere (tilt + rotation only)
+  orientation_2d:
+    features:
+      - tilt_rotation.rotation
+      - tilt_rotation.tilt
+    transform: unit_sphere
+
+  # Full spherical embedding (tilt + rotation + inter-residue distance)
+  # orientation_3d:
+  #   features:
+  #     - tilt_rotation.rotation
+  #     - tilt_rotation.tilt
+  #     - inter_residue_distance
+  #   transform: spherical
+  #   radial_scale: 0.6
+
+  # Example: purely Euclidean features (no angular transform needed)
+  # structural_2d:
+  #   features:
+  #     - anchor_insertion
+  #     - lobe_com.Lobe1
+  #   transform: none
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Clustering — HDBSCAN + K-means
+# ─────────────────────────────────────────────────────────────────────────────
+clustering:
+  feature_set: orientation_2d
+
+  hdbscan:
+    min_cluster_size: 200
+    min_samples: null                  # null = min_cluster_size // 2
+    cluster_selection_method: eom      # "eom" or "leaf"
+
+    # Exploration sweep (diagnostic only — inspect plots and choose manually)
+    auto_mcs: false
+    sweep_n_mcs: 15
+    sweep_n_ms: 8
+    mcs_min: 50
+    mcs_max: null
+    ms_min: 5
+    ms_max: null
+    sweep_subsample: 20000
+
+  kmeans:
+    n_clusters: 3
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GMM — Gaussian Mixture Model
+# ─────────────────────────────────────────────────────────────────────────────
+# gmm:
+#   feature_set: orientation_3d
+#   n_components: [3, 4, 5, 6]        # BIC/AIC sweep over these values
+#   covariance_type: full              # full, tied, diag, or spherical
+#   random_state: 42
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Kinetics — Bayesian HMM (pyemma)
+# ─────────────────────────────────────────────────────────────────────────────
+# kinetics:
+#   feature_set: orientation_3d
+#
+#   # Microstate discretisation
+#   microstate_source: internal        # "internal" (kmeans/gmm) or "gmm" (use gmm module output)
+#   micro_method: kmeans               # kmeans or gmm (when source=internal)
+#   K_micro: 300
+#
+#   # HMM parameters
+#   K: 4                              # number of hidden states
+#   lag: 0                            # 0 = ITS scan only; set > 0 to fit HMM
+#   max_lag: 5000
+#   dt_time: 0.1                      # ns per frame
+#   nsamples: 100
+#
+#   # Optional state labelling
+#   # state_labels: {0: "OS1", 1: "OS2", 2: "OS3", 3: "OS4"}
+#   # mfpt_order: [2, 1, 0, 3]

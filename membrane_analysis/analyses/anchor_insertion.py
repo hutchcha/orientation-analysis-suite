@@ -19,6 +19,7 @@ import matplotlib.pyplot as plt
 
 
 ANALYSIS_KEY = "anchor_insertion"
+OUTPUT_TYPE = "scalar"
 
 
 def _compute_one(u, anchor_sel, membrane_sel, stride):

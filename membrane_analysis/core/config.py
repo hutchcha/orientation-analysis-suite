@@ -89,6 +89,39 @@ def get_analysis_params(cfg, analysis_key):
     return {}
 
 
+def load_stats_config(path):
+    """Load a stats YAML configuration file and return the dict."""
+    with open(path, "r") as f:
+        stats_cfg = yaml.safe_load(f)
+    return stats_cfg
+
+
+def get_feature_set(stats_cfg, name):
+    """Return a named feature_set dict from the stats config.
+
+    Parameters
+    ----------
+    stats_cfg : dict — parsed stats YAML
+    name      : str  — feature set name (e.g. "orientation_3d")
+
+    Returns
+    -------
+    dict with keys: features (list), transform (str), radial_scale (float), ...
+    """
+    sets = stats_cfg.get("feature_sets", {})
+    if name not in sets:
+        raise KeyError(
+            f"Feature set '{name}' not found in stats config. "
+            f"Available: {list(sets.keys())}"
+        )
+    return sets[name]
+
+
+def get_stats_params(stats_cfg, module_key):
+    """Return the config block for a statistical module (clustering, gmm, kinetics)."""
+    return stats_cfg.get(module_key, {})
+
+
 def build_universe(cfg, name):
     """Create an MDAnalysis Universe for a named system."""
     sys_cfg = get_system(cfg, name)

@@ -26,6 +26,7 @@ import matplotlib.pyplot as plt
 
 
 ANALYSIS_KEY = "inter_residue_distance"
+OUTPUT_TYPE = "scalar"
 
 
 def _compute_one(u, sel1, sel2, stride):

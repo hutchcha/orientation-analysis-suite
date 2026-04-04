@@ -63,6 +63,8 @@ from membrane_analysis.core.plotting import (
 
 
 ANALYSIS_KEY = "tilt_rotation"
+OUTPUT_TYPE = "angular"
+OUTPUT_FIELDS = {"tilt": "angular", "rotation": "angular"}
 
 
 # ── Geometry helpers ──────────────────────────────────────────────────────────

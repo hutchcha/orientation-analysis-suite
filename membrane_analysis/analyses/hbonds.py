@@ -30,6 +30,7 @@ from MDAnalysis.analysis.hydrogenbonds.hbond_analysis import HydrogenBondAnalysi
 
 
 ANALYSIS_KEY = "hbonds"
+OUTPUT_TYPE = "scalar"
 
 LIPID_ACCEPTOR_ATOMS = "(name O* or name N* or name P*)"
 

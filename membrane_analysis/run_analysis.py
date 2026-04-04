@@ -14,8 +14,13 @@ import argparse
 import sys
 import os
 
-from membrane_analysis.core.config import load_config, is_analysis_enabled, get_style, build_all_universes
+from membrane_analysis.core.config import (
+    load_config, load_stats_config, is_analysis_enabled, get_style,
+    get_output_dir, get_system_names, get_feature_set, get_stats_params,
+    build_all_universes,
+)
 from membrane_analysis.core.plotting import setup_style
+from membrane_analysis.core.features import assemble_features
 
 # ─── Registry of analysis modules ─────────────────────────────────────────────
 # Maps analysis_key → (module, group)
@@ -131,6 +136,63 @@ def run_pipeline(cfg, mode="all", plot_only=False, recompute_keys=None):
     print(f"{'='*60}\n")
 
 
+# ── Statistical analysis pipeline ────────────────────────────────────────────
+
+STATS_MODULES = {
+    "clustering": "membrane_analysis.analyses.clustering",
+    # "gmm":        "membrane_analysis.analyses.gmm",
+    "kinetics":   "membrane_analysis.analyses.kinetics",
+}
+
+
+def run_stats_pipeline(cfg, stats_cfg):
+    """Run statistical analysis modules using the stats config.
+
+    Each stats module reads from the feature assembly layer, which
+    resolves cached data from the main pipeline.
+    """
+    outdir = get_output_dir(cfg)
+    names  = get_system_names(cfg)
+
+    print(f"\n{'='*60}")
+    print("  Statistical Analysis Pipeline")
+    print(f"{'='*60}\n")
+
+    for module_key, module_path in STATS_MODULES.items():
+        module_cfg = get_stats_params(stats_cfg, module_key)
+        if not module_cfg:
+            continue
+
+        feature_set_name = module_cfg.get("feature_set")
+        if not feature_set_name:
+            print(f"  [{module_key}] No feature_set specified, skipping.")
+            continue
+
+        print(f"\n{'-'*40}")
+        print(f"  Running: {module_key}")
+        print(f"  Feature set: {feature_set_name}")
+        print(f"{'-'*40}")
+
+        try:
+            fs_cfg = get_feature_set(stats_cfg, feature_set_name)
+        except KeyError as e:
+            print(f"  ERROR: {e}")
+            continue
+
+        # Assemble features for each system
+        for name in names:
+            try:
+                X, columns, meta = assemble_features(outdir, fs_cfg, name)
+                print(f"  [{name}] Feature matrix: {X.shape} "
+                      f"(transform={meta['transform']})")
+            except (FileNotFoundError, KeyError) as e:
+                print(f"  [{name}] {e}")
+                continue
+
+    print(f"\n{'='*60}")
+    print("  Stats pipeline complete.")
+    print(f"{'='*60}\n")
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -143,6 +205,8 @@ def main():
                         help="Skip computation, regenerate plots from cached data")
     parser.add_argument("--recompute", nargs="+", metavar="KEY",
                         help="Force recompute specific analyses (e.g. rmsd apl)")
+    parser.add_argument("--stats", metavar="STATS_YAML",
+                        help="Path to stats YAML for clustering/GMM/kinetics")
 
     args = parser.parse_args()
 
@@ -152,8 +216,17 @@ def main():
     style_cfg = get_style(cfg)
     setup_style(font_family=style_cfg["font_family"], dpi=style_cfg["dpi"])
 
-    run_pipeline(cfg, mode=args.mode, plot_only=args.plot_only,
-                 recompute_keys=args.recompute)
+    # Main analysis pipeline (unless --stats-only in the future)
+    if not args.stats:
+        run_pipeline(cfg, mode=args.mode, plot_only=args.plot_only,
+                     recompute_keys=args.recompute)
+    else:
+        # If --stats is given, run main pipeline first (loads from cache),
+        # then run stats pipeline
+        run_pipeline(cfg, mode=args.mode, plot_only=args.plot_only,
+                     recompute_keys=args.recompute)
+        stats_cfg = load_stats_config(args.stats)
+        run_stats_pipeline(cfg, stats_cfg)
 
 
 if __name__ == "__main__":

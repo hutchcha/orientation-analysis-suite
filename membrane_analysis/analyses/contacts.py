@@ -41,6 +41,7 @@ from membrane_analysis.core.plotting import style_axes, save_figure
 
 
 ANALYSIS_KEY = "contacts"
+OUTPUT_TYPE = "per_residue"
 
 # ── Multiprocessing worker ────────────────────────────────────────────────────
 

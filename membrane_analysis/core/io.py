@@ -41,6 +41,26 @@ def cached_compute(cache_path, compute_fn, force_recompute=False):
     return data
 
 
+def save_per_system(results, outdir, analysis_key):
+    """Save individual pickle files into per-system subfolders.
+
+    Given a results dict {system_name: data}, saves each system's data
+    to ``outdir/{system_name}/{analysis_key}.pkl``.
+
+    Parameters
+    ----------
+    results      : dict {str: any}
+    outdir       : str — analysis output directory (e.g. results/rmsd/)
+    analysis_key : str — e.g. "rmsd"
+    """
+    for name, data in results.items():
+        sys_dir = os.path.join(outdir, name)
+        os.makedirs(sys_dir, exist_ok=True)
+        sys_cache = os.path.join(sys_dir, f"{analysis_key}.pkl")
+        with open(sys_cache, "wb") as f:
+            pickle.dump(data, f)
+
+
 def save_txt(arr, path):
     """Save a numpy array to a text file."""
     ensure_dir(path)

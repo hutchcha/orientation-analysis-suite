@@ -26,6 +26,8 @@ import matplotlib.pyplot as plt
 
 
 ANALYSIS_KEY = "lobe_com"
+OUTPUT_TYPE = "scalar"
+OUTPUT_FIELDS = {"Lobe1": "scalar", "Lobe2": "scalar"}
 
 DEFAULT_MEM_SEL = "resname POPC POPE SAPI CHL1 and name C*"
 

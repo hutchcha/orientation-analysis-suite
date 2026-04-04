@@ -20,6 +20,7 @@ import matplotlib.pyplot as plt
 
 
 ANALYSIS_KEY = "pp_distance"
+OUTPUT_TYPE = "scalar"
 
 
 def _compute_one(u, phos_sel, stride):

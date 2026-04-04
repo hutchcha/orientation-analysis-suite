@@ -38,6 +38,7 @@ import matplotlib.pyplot as plt
 
 
 ANALYSIS_KEY = "apl"
+OUTPUT_TYPE = "scalar"
 
 LIPID_COLORS = {
     "Total": "black", "POPC": "blue", "POPE": "green", "POPS": "gold",

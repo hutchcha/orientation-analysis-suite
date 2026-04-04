@@ -21,6 +21,7 @@ import matplotlib.pyplot as plt
 
 
 ANALYSIS_KEY = "rmsd"
+OUTPUT_TYPE = "scalar"
 
 
 def _compute_one(u, sel, stride):
