@@ -27,11 +27,13 @@ EQUILIBRATION_MODULES = {
 }
 
 ANALYSIS_MODULES = {
-    "tilt_rotation":    "membrane_analysis.analyses.tilt_rotation",
-    "lobe_com":         "membrane_analysis.analyses.lobe_com",
-    "hbonds":           "membrane_analysis.analyses.hbonds",
-    "clustering":       "membrane_analysis.analyses.clustering",
-    "contacts":         "membrane_analysis.analyses.contacts",
+    "tilt_rotation":           "membrane_analysis.analyses.tilt_rotation",
+    "lobe_com":                "membrane_analysis.analyses.lobe_com",
+    "hbonds":                  "membrane_analysis.analyses.hbonds",
+    "clustering":              "membrane_analysis.analyses.clustering",
+    "contacts":                "membrane_analysis.analyses.contacts",
+    "inter_residue_distance":  "membrane_analysis.analyses.inter_residue_distance",
+    "kinetics":                "membrane_analysis.analyses.kinetics",
 }
 
 ALL_MODULES = {**EQUILIBRATION_MODULES, **ANALYSIS_MODULES}

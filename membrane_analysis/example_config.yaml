@@ -48,6 +48,9 @@ systems:
   #     anchor_rmsd: "protein and resid 170:181 and name CA"
   #     # Alignment selection for anchor RMSD
   #     align: "protein and backbone"
+  #     # Inter-residue distance: COM distance between two selections per frame
+  #     distance_sel1: "protein and resid 50 and name CA"
+  #     distance_sel2: "protein and resid 170 and name CA"
   #     # Contacts: protein and lipid heavy atoms within cutoff distance
   #     protein_heavy: "(protein and not name H*) or (resname CYSF CYSG and not name H*)"
   #     lipid_heavy:   "resname POPC POPE POPS CHL1 SAPI PSM PLA18 and not name H*"
@@ -214,6 +217,38 @@ analyses:
       # K-means — centroid-based, requires a fixed cluster count
       kmeans:
         n_clusters: 3
+
+    inter_residue_distance:
+      enabled: false
+      stride: 1
+      ma_window: 50
+
+    kinetics:
+      enabled: false
+      # "spherical" uses tilt_rotation + inter_residue_distance -> Cartesian
+      # "direct" loads arbitrary feature files (custom_features list)
+      mode: spherical
+      radial_scale: 1.0
+
+      # For direct mode only:
+      # custom_features:
+      #   - /path/to/feature1.txt
+      #   - /path/to/feature2.txt
+
+      # Microstate discretisation
+      micro_method: kmeans     # kmeans or gmm
+      K_micro: 300
+
+      # HMM parameters
+      K: 4                    # number of hidden states
+      lag: 0                  # 0 = ITS scan only; set > 0 to fit HMM
+      max_lag: 5000           # max lag for ITS scan (frames)
+      dt_time: 0.1            # nanoseconds per frame
+      nsamples: 100           # Bayesian HMM samples
+
+      # Optional: custom state labels and MFPT plot ordering
+      # state_labels: {0: "OS1", 1: "OS2", 2: "OS3", 3: "OS4"}
+      # mfpt_order: [2, 1, 0, 3]
 
     contacts:
       enabled: false
