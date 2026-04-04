@@ -200,6 +200,6 @@ def plot(cfg, results):
                       label=col, ma_window=ma, ma_color=c, ma_z=2)
         ax.legend(loc="upper right", fontsize=10, frameon=False)
 
-    fig.supxlabel("Time (us)", fontsize=20)
-    fig.supylabel("Area per Lipid (A^2)", fontsize=20)
+    fig.supxlabel("Time (μs)", fontsize=20)
+    fig.supylabel("Area per Lipid (Å²)", fontsize=20)
     save_figure(fig, os.path.join(outdir, "apl_all.png"))

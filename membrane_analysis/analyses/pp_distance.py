@@ -74,9 +74,9 @@ def plot(cfg, results):
         line_plot(time, results[name], ax, title=name,
                   color="black", z=1, ma_window=ma, ma_color="red", ma_z=2)
 
-    fig.supxlabel("Time (us)", fontsize=20)
-    fig.supylabel("Bilayer Thickness (A)", fontsize=20)
+    fig.supxlabel("Time (μs)", fontsize=20)
+    fig.supylabel("Bilayer Thickness (Å)", fontsize=20)
     save_figure(fig, os.path.join(outdir, "pp_distance_all.png"))
 
-    overlay_line_plot(results, sim_us, "Bilayer Thickness (A)",
+    overlay_line_plot(results, sim_us, "Bilayer Thickness (Å)",
                       os.path.join(outdir, "pp_distance_comparison.png"), ma_window=ma)

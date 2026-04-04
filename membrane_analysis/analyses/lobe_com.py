@@ -88,8 +88,8 @@ def plot(cfg, results):
                   ma_window=ma, ma_color="blue",   ma_z=2)
         ax.legend(fontsize=12, frameon=False)
 
-    fig.supxlabel("Time (us)", fontsize=20)
-    fig.supylabel("Z_lobe (A)", fontsize=20)
+    fig.supxlabel("Time (μs)", fontsize=20)
+    fig.supylabel("Z_lobe (Å)", fontsize=20)
     save_figure(fig, os.path.join(outdir, "lobe_timeseries_all.png"))
 
     # ── 2D KDE contours: shared colorbar, one panel per system ───────────────
@@ -129,6 +129,6 @@ def plot(cfg, results):
     if cf_last is not None:
         fig2.colorbar(cf_last, ax=axes2_flat, orientation="vertical",
                       fraction=0.02, pad=0.02, label="Probability")
-    fig2.supxlabel("Z_Lobe1 (A)", fontsize=20)
-    fig2.supylabel("Z_Lobe2 (A)", fontsize=20)
+    fig2.supxlabel("Z_Lobe1 (Å)", fontsize=20)
+    fig2.supylabel("Z_Lobe2 (Å)", fontsize=20)
     save_figure(fig2, os.path.join(outdir, "lobe_contour_all.png"))

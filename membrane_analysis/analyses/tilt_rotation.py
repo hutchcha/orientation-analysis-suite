@@ -382,8 +382,8 @@ def plot(cfg, results):
         time = np.linspace(0, sim_us, len(results[name]["tilt"]))
         line_plot(time, results[name]["tilt"], ax, title=name,
                   color="black", z=1, ma_window=ma, ma_color="red", ma_z=2)
-    fig_t.supxlabel("Time (us)", fontsize=20)
-    fig_t.supylabel("Tilt (deg)", fontsize=20)
+    fig_t.supxlabel("Time (μs)", fontsize=20)
+    fig_t.supylabel("Tilt (°)", fontsize=20)
     save_figure(fig_t, os.path.join(outdir, "tilt_timeseries_all.png"))
 
     # ── rotation time series ───────────────────────────────────────────────────
@@ -392,12 +392,12 @@ def plot(cfg, results):
         time = np.linspace(0, sim_us, len(results[name]["rotation"]))
         line_plot(time, results[name]["rotation"], ax, title=name,
                   color="black", z=1, ma_window=ma, ma_color="red", ma_z=2)
-    fig_r.supxlabel("Time (us)", fontsize=20)
-    fig_r.supylabel("Rotation (deg)", fontsize=20)
+    fig_r.supxlabel("Time (μs)", fontsize=20)
+    fig_r.supylabel("Rotation (°)", fontsize=20)
     save_figure(fig_r, os.path.join(outdir, "rotation_timeseries_all.png"))
 
     # ── comparison overlays ────────────────────────────────────────────────────
     overlay_line_plot({n: results[n]["tilt"]     for n in names}, sim_us,
-                      "Tilt (deg)",     os.path.join(outdir, "tilt_comparison.png"),     ma_window=ma)
+                      "Tilt (°)",     os.path.join(outdir, "tilt_comparison.png"),     ma_window=ma)
     overlay_line_plot({n: results[n]["rotation"] for n in names}, sim_us,
-                      "Rotation (deg)", os.path.join(outdir, "rotation_comparison.png"), ma_window=ma)
+                      "Rotation (°)", os.path.join(outdir, "rotation_comparison.png"), ma_window=ma)

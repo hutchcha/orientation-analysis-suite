@@ -69,9 +69,9 @@ def plot(cfg, results):
         line_plot(time, results[name], ax, title=name,
                   color="black", z=1, ma_window=ma, ma_color="red", ma_z=2)
 
-    fig.supxlabel("Time (us)", fontsize=20)
-    fig.supylabel("Ca RMSD (A)", fontsize=20)
+    fig.supxlabel("Time (μs)", fontsize=20)
+    fig.supylabel("Cα RMSD (Å)", fontsize=20)
     save_figure(fig, os.path.join(outdir, "rmsd_all.png"))
 
-    overlay_line_plot(results, sim_us, "Ca RMSD (A)",
+    overlay_line_plot(results, sim_us, "Cα RMSD (Å)",
                       os.path.join(outdir, "rmsd_comparison.png"), ma_window=ma)

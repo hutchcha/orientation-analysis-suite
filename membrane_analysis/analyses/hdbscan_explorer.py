@@ -337,7 +337,7 @@ def plot_scatter_clustered(tilt, rot, labels, clusters, outpath, label=""):
                 markeredgecolor="black", markeredgewidth=0.8, zorder=3)
 
     style_axes(ax, title=label if label else "HDBSCAN clusters",
-               xlabel="Rotation (deg)", ylabel="Tilt (deg)")
+               xlabel="Rotation (°)", ylabel="Tilt (°)")
     ax.set_xlim(-185, 185)
     ax.set_ylim(0, max(tilt.max() + 5, 135))
     ax.legend(fontsize=10, frameon=True, framealpha=0.8, markerscale=5,
@@ -361,8 +361,8 @@ def plot_timeseries_clustered(tilt, rot, labels, outpath, label=""):
         ax_tilt.scatter(time[idx], tilt[idx], s=0.5, c=c,
                         alpha=0.5, rasterized=True)
 
-    style_axes(ax_rot,  title=label, ylabel="Rotation (deg)")
-    style_axes(ax_tilt, xlabel="Frame", ylabel="Tilt (deg)")
+    style_axes(ax_rot,  title=label, ylabel="Rotation (°)")
+    style_axes(ax_tilt, xlabel="Frame", ylabel="Tilt (°)")
     ax_rot.legend(markerscale=10, fontsize=9, frameon=False, loc="upper right")
 
     save_figure(fig, outpath)
