@@ -141,7 +141,7 @@ See [CLUSTERING_KINETICS.md](CLUSTERING_KINETICS.md) for detailed documentation 
 
 The orientation analysis is based on the method described in:
 
-> Li, Z. L., & Buck, M. (2017). "The Plasma Membrane as a Competitive Inhibitor and Positive Allosteric Modulator of KRas4B Signaling." *Biophysical Journal*, 113(5), 1071-1080.
+> Neale, C. & Garcia, A. E. The Plasma Membrane as a Competitive Inhibitor and Positive Allosteric Modulator of KRas4B Signaling. *Biophysical Journal* 118, 1129-1141 (2020).
 
 The protein orientation is defined by a helix axis vector (typically alpha-5):
 
@@ -178,6 +178,32 @@ selections:
   protein_heavy: "(protein and not name H*) or (resname CYSG and not name H*)"
   lipid_heavy:   "resname POPC POPE POPS PLA18 PSM and not name H*"
 ```
+
+## References
+
+This pipeline relies on several open-source tools and is based on published methods. If you use this software, please cite the relevant papers:
+
+**Orientation analysis method:**
+
+1. Neale, C. & Garcia, A. E. The Plasma Membrane as a Competitive Inhibitor and Positive Allosteric Modulator of KRas4B Signaling. *Biophysical Journal* 118, 1129-1141 (2020).
+
+**Core dependencies:**
+
+2. Gowers, R. J. et al. MDAnalysis: A Python Package for the Rapid Analysis of Molecular Dynamics Simulations. *Proceedings of the 15th Python in Science Conference* 98-105 (2016). doi:10.25080/Majora-629e541a-00e.
+3. Virtanen, P. et al. SciPy 1.0: fundamental algorithms for scientific computing in Python. *Nat Methods* 17, 261-272 (2020).
+
+**Clustering:**
+
+4. McInnes, L., Healy, J. & Astels, S. hdbscan: Hierarchical density based clustering. *Journal of Open Source Software* 2, 205 (2017).
+5. Pedregosa, F. et al. Scikit-learn: Machine Learning in Python. *Journal of Machine Learning Research* 12, 2825-2830 (2011).
+
+**Kinetics:**
+
+6. Scherer, M. K. et al. PyEMMA 2: A Software Package for Estimation, Validation, and Analysis of Markov Models. *J. Chem. Theory Comput.* 11, 5525-5542 (2015).
+
+**Lipid analysis:**
+
+7. Smith, P. & Lorenz, C. D. LiPyphilic: A Python Toolkit for the Analysis of Lipid Membrane Simulations. *J. Chem. Theory Comput.* 17, 5907-5919 (2021).
 
 ## License
 
