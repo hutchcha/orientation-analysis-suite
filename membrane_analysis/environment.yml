@@ -1,0 +1,26 @@
+name: memb_analysis
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  # Core MD analysis
+  - conda-forge::mdanalysis>=2.7
+  # Numerics / science
+  - numpy
+  - scipy
+  - pandas
+  - matplotlib
+  - tqdm
+  # Config / IO
+  - pyyaml
+  # Clustering
+  - scikit-learn
+  # Plotting extras
+  - seaborn
+  - pip:
+    # lipyphilic not on conda-forge main, best via pip
+    - lipyphilic
+    # HDBSCAN (conda-forge version sometimes lags)
+    - hdbscan

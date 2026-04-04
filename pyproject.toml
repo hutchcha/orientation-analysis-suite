@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "membrane-analysis"
+version = "0.1.0"
+description = "Modular pipeline for MD simulation equilibration and membrane orientation analysis"
+requires-python = ">=3.10"
+dependencies = [
+    "MDAnalysis>=2.7",
+    "numpy",
+    "scipy",
+    "pandas",
+    "matplotlib",
+    "tqdm",
+    "PyYAML",
+    "scikit-learn",
+    "seaborn",
+    "lipyphilic",
+    "hdbscan",
+]
+
+[project.scripts]
+run-analysis = "membrane_analysis.run_analysis:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["membrane_analysis*"]
+
+[tool.setuptools.package-data]
+membrane_analysis = ["example_config.yaml"]

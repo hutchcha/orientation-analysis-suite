@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+*.editable*
+
+# pip editable install
+*.pth
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Analysis outputs (large files — keep configs/code, not results)
+membrane_analysis/testing/
+membrane_analysis/results/
+*.pkl
+*.dcd
+*.xtc
+*.trr
+*.nc
+
+# Topology/trajectory files (usually too large for git)
+*.psf
+*.gro
+*.tpr
+*.pdb
+
+# MDAnalysis trajectory index caches
+*.npz
+
+# Claude Code local settings
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo

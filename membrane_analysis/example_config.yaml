@@ -1,0 +1,208 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Membrane Analysis Pipeline — Example Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+# Copy this file, fill in your paths and selections, and run:
+#   python run_analysis.py my_config.yaml
+#   python run_analysis.py my_config.yaml --mode equilibration
+#   python run_analysis.py my_config.yaml --plot-only
+#   python run_analysis.py my_config.yaml --recompute rmsd apl
+
+global:
+  sim_length_us: 20          # total simulation length in microseconds
+  dt_ns: 0.1                 # frame spacing in nanoseconds
+  output_dir: ./results      # all outputs go here (pickles, plots)
+  force_recompute: false     # if true, ignore all caches and recompute everything
+
+style:
+  font_family: Arial
+  dpi: 600
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Systems — one entry per simulation trajectory
+# ─────────────────────────────────────────────────────────────────────────────
+systems:
+  # Rheb-GDP:
+  #   topology: /path/to/rheb_gdp/sys.psf
+  #   trajectory: /path/to/rheb_gdp/cenwrapprod.dcd
+
+  #   selections:
+  #     # Protein RMSD — exclude flexible loops
+  #     rmsd: "protein and name CA and not (resid 31:43 61:79 170:181)"
+  #     # Lipid anchor atoms for insertion depth
+  #     anchor: "resname CYSF and name CA HA C CB SG CT OT1 OT2 O H*"
+  #     # Membrane heavy atoms (for anchor insertion depth reference)
+  #     membrane_heavy: "resname POPC POPE POPS CHL1 SAPI PSM PLA18 and not name H*"
+  #     # Phosphorus atoms (for P-P distance / bilayer thickness)
+  #     phosphorus: "resname POPC POPE SAPI PSM PLA18 and name P"
+  #     # APL headgroup selection (CHL1 uses O3, not P)
+  #     apl_headgroup: "resname POPC SAPI CHL1 POPE and name P O3"
+  #     # Protein lobes for COM Z-distance
+  #     lobe1: "resid 1:86 and backbone"
+  #     lobe2: "resid 95:170 and backbone"
+  #     # Membrane COM reference for lobe analysis
+  #     membrane_com: "resname POPC POPE SAPI CHL1 and name C*"
+  #     # Orientation axis: vector from start COM → end COM
+  #     orientation_axis_start: "resid 1:86 and backbone"
+  #     orientation_axis_end: "resid 95:170 and backbone"
+  #     # Anchor region for ROI RMSD
+  #     anchor_rmsd: "protein and resid 170:181 and name CA"
+  #     # Alignment selection for anchor RMSD
+  #     align: "protein and backbone"
+
+  #   # Lipid headgroup atoms — used by APL module to break down per-lipid
+  #   # Key = resname, Value = atom selection within that resname
+  #   lipid_headgroups:
+  #     POPC: "name P"
+  #     POPE: "name P"
+  #     SAPI: "name P"
+  #     CHL1: "name O3"    # cholesterol has no phosphorus
+
+  #   # H-bond settings
+  #   hbonds:
+  #     # Set donors to null to use MDAnalysis guess_hydrogens() auto-detection
+  #     donors: null
+  #     # Lipid resnames to check for H-bonds (skips those not present)
+  #     acceptor_lipids: [POPC, POPE, POPS, PLA18]
+  #     # Or provide explicit 'between' groups (overrides donors/acceptors):
+  #     # between: ["protein and resid 170:181", "resname POPC POPE POPS PLA18"]
+
+  #   # Per-system stride overrides (takes priority over analysis-level stride)
+  #   # stride_overrides:
+  #   #   rmsd: 5
+
+  # Rheb-GTP:
+  #   topology: /path/to/rheb_gtp/sys.psf
+  #   trajectory: /path/to/rheb_gtp/cenwrapprod.dcd
+  #   selections:
+  #     rmsd: "protein and name CA and not (resid 31:43 61:79 170:181)"
+  #     anchor: "resname CYSF and name CA HA C CB SG CT OT1 OT2 O H*"
+  #     membrane_heavy: "resname POPC POPE POPS CHL1 SAPI PSM PLA18 and not name H*"
+  #     phosphorus: "resname POPC POPE SAPI PSM PLA18 and name P"
+  #     apl_headgroup: "resname POPC SAPI CHL1 POPE and name P O3"
+  #     lobe1: "resid 1:86 and backbone"
+  #     lobe2: "resid 95:170 and backbone"
+  #     membrane_com: "resname POPC POPE SAPI CHL1 and name C*"
+  #     orientation_axis_start: "resid 1:86 and backbone"
+  #     orientation_axis_end: "resid 95:170 and backbone"
+  #     anchor_rmsd: "protein and resid 170:181 and name CA"
+  #     align: "protein and backbone"
+  #   lipid_headgroups:
+  #     POPC: "name P"
+  #     POPE: "name P"
+  #     SAPI: "name P"
+  #     CHL1: "name O3"
+  #   hbonds:
+  #     donors: null
+  #     acceptor_lipids: [POPC, POPE, POPS, PLA18]
+
+  # RhoA-GDP:
+  #   topology: /path/to/rhoa_gdp/sys.psf
+  #   trajectory: /path/to/rhoa_gdp/cenwrapprod.dcd
+  #   selections:
+  #     rmsd: "protein and name CA and not (resid 25:42 58:78 120:140 178:191)"
+  #     anchor: "resname CYSG and name CA HA C CB SG CT OT1 OT2 O H*"
+  #     membrane_heavy: "resname POPC POPE POPS CHL1 SAPI PSM PLA18 and not name H*"
+  #     phosphorus: "resname POPC POPE POPS SAPI PSM PLA18 and name P"
+  #     apl_headgroup: "name P"
+  #     lobe1: "resid 1:86 and backbone"
+  #     lobe2: "resid 87:177 and backbone"
+  #     membrane_com: "resname POPC POPE SAPI CHL1 and name C*"
+  #     orientation_axis_start: "resid 1:86 and backbone"
+  #     orientation_axis_end: "resid 87:177 and backbone"
+  #     anchor_rmsd: "protein and resid 180:191 and name CA"
+  #     align: "protein and backbone"
+  #   lipid_headgroups:
+  #     POPC: "name P"
+  #     POPE: "name P"
+  #     POPS: "name P"
+  #   hbonds:
+  #     donors: null
+  #     acceptor_lipids: [POPC, POPE, POPS, PLA18]
+  #     # Explicit between groups (RhoA-specific charged anchor residues):
+  #     between: ["protein and resid 182 183 185 186 187", "resname POPC POPE POPS PLA18"]
+
+  RhoA-GTP:
+    topology: RhoA-GTP.psf
+    trajectory: RhoA-GTP_stride20.xtc
+    selections:
+      rmsd: "protein and name CA and not (resid 25:42 58:78 120:140 178:191)"
+      anchor: "resname CYSG and not (name CA HA C CB SG CT OT1 OT2 O H*)"
+      membrane_heavy: "resname POPC POPE POPS CHL1 SAPI PSM PLA18 and not name H*"
+      phosphorus: "resname POPC POPE POPS SAPI PSM PLA18 and name P"
+      # Must include every resname listed in lipid_headgroups; POPS uses name P
+      apl_headgroup: "resname POPC POPE POPS PLA18 PSM and name P"
+      lobe1: "resid 1:86 and backbone"
+      lobe2: "resid 87:177 and backbone"
+      membrane_com: "resname POPC POPE SAPI CHL1 and name C*"
+      # α5 helix axis: C-terminal end → N-terminal end
+      orientation_axis_start: "protein and resid 177 and name CA"
+      orientation_axis_end:   "protein and resid 169 and name CA"
+      # Rotation pointer: α2/switch-II region COM
+      rotation_reference: "protein and resid 89:93"
+      anchor_rmsd: "protein and resid 180:191 and name CA"
+      align: "protein and backbone"
+    lipid_headgroups:
+      POPC: "name P"
+      POPE: "name P"
+      POPS: "name P"
+    hbonds:
+      between: ["protein and resid 182 183 185 186 187", "resname POPC POPE POPS PLA18"]
+      acceptor_lipids: [POPC, POPE, POPS, PLA18]
+
+  # Example of a system with stride overrides (e.g. resimulation with different dt)
+  # RhoA-GTP-2:
+  #   topology: /path/to/resim/nowat.psf
+  #   trajectory: /path/to/resim/cenwrapprod.dcd
+  #   stride_overrides:
+  #     rmsd: 1
+  #     lobe_com: 1
+  #     apl: 2
+  #     hbonds: 1
+  #   selections: ...
+  #   lipid_headgroups: ...
+  #   hbonds: ...
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Analyses — grouped into equilibration and analysis
+# ─────────────────────────────────────────────────────────────────────────────
+analyses:
+  equilibration:
+    rmsd:
+      enabled: true
+      stride: 10
+      ma_window: 50       # moving average window for plots
+    pp_distance:
+      enabled: true
+      stride: 10
+      ma_window: 500
+    apl:
+      enabled: true
+      stride: 1000
+      ma_window: 500
+    anchor_insertion:
+      enabled: true
+      stride: 10
+      ma_window: 50
+
+  analysis:
+    tilt_rotation:
+      enabled: true
+      stride: 1
+      ma_window: 500
+    lobe_com:
+      enabled: true
+      stride: 10
+      ma_window: 200
+    hbonds:
+      enabled: true
+      stride: 10
+      ma_window: 21
+    clustering:
+      enabled: true
+      # HDBSCAN — density-based, no fixed cluster count
+      hdbscan:
+        min_cluster_size: 200   # minimum frames to form a cluster
+        min_samples: null       # null = min_cluster_size // 2
+      # K-means — centroid-based, requires a fixed cluster count
+      kmeans:
+        n_clusters: 3
