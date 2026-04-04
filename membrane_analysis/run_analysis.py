@@ -31,6 +31,7 @@ ANALYSIS_MODULES = {
     "lobe_com":         "membrane_analysis.analyses.lobe_com",
     "hbonds":           "membrane_analysis.analyses.hbonds",
     "clustering":       "membrane_analysis.analyses.clustering",
+    "contacts":         "membrane_analysis.analyses.contacts",
 }
 
 ALL_MODULES = {**EQUILIBRATION_MODULES, **ANALYSIS_MODULES}

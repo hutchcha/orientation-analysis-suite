@@ -48,6 +48,9 @@ systems:
   #     anchor_rmsd: "protein and resid 170:181 and name CA"
   #     # Alignment selection for anchor RMSD
   #     align: "protein and backbone"
+  #     # Contacts: protein and lipid heavy atoms within cutoff distance
+  #     protein_heavy: "(protein and not name H*) or (resname CYSF CYSG and not name H*)"
+  #     lipid_heavy:   "resname POPC POPE POPS CHL1 SAPI PSM PLA18 and not name H*"
 
   #   # Lipid headgroup atoms — used by APL module to break down per-lipid
   #   # Key = resname, Value = atom selection within that resname
@@ -206,3 +209,27 @@ analyses:
       # K-means — centroid-based, requires a fixed cluster count
       kmeans:
         n_clusters: 3
+
+    contacts:
+      enabled: false
+      stride: 10
+      cutoff: 4.0           # contact distance in Angstroms
+      n_jobs: -1            # -1 = cpu_count - 1; set to 1 to disable parallelism
+      chunk_size: 200       # frames per worker task
+
+      # Optional: structural annotation bands drawn on the bar chart.
+      # Each entry needs: label, start (resid), end (resid), color.
+      # regions:
+      #   - {label: "NT",   start:   0, end:   5, color: "magenta"}
+      #   - {label: "SwI",  start:  33, end:  41, color: "firebrick"}
+      #   - {label: "IS",   start:  50, end:  54, color: "skyblue"}
+      #   - {label: "SwII", start:  63, end:  79, color: "teal"}
+      #   - {label: "a3",   start:  90, end: 110, color: "purple"}
+      #   - {label: "a4",   start: 131, end: 143, color: "gold"}
+      #   - {label: "a5",   start: 153, end: 170, color: "orange"}
+      #   - {label: "HVR",  start: 170, end: 181, color: "blue"}
+
+      # Optional: per-system residue tick+label markers above specific bars.
+      # residue_markers:
+      #   RhoA-GTP: [["Y67", 67], ["K102", 102], ["K109", 109]]
+      #   RhoA-GDP: [["Y67", 67], ["K5", 5]]

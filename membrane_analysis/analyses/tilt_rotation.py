@@ -57,7 +57,9 @@ from membrane_analysis.core.config import (
     get_output_dir, get_system_names, get_selection,
     get_stride, get_sim_length, is_force_recompute, get_analysis_params,
 )
-from membrane_analysis.core.plotting import line_plot, style_axes, save_figure, multi_system_figure
+from membrane_analysis.core.plotting import (
+    line_plot, style_axes, save_figure, multi_system_figure, overlay_line_plot,
+)
 
 
 ANALYSIS_KEY = "tilt_rotation"
@@ -393,3 +395,9 @@ def plot(cfg, results):
     fig_r.supxlabel("Time (us)", fontsize=20)
     fig_r.supylabel("Rotation (deg)", fontsize=20)
     save_figure(fig_r, os.path.join(outdir, "rotation_timeseries_all.png"))
+
+    # ── comparison overlays ────────────────────────────────────────────────────
+    overlay_line_plot({n: results[n]["tilt"]     for n in names}, sim_us,
+                      "Tilt (deg)",     os.path.join(outdir, "tilt_comparison.png"),     ma_window=ma)
+    overlay_line_plot({n: results[n]["rotation"] for n in names}, sim_us,
+                      "Rotation (deg)", os.path.join(outdir, "rotation_comparison.png"), ma_window=ma)

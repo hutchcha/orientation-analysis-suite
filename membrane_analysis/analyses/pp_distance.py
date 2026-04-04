@@ -15,7 +15,7 @@ from membrane_analysis.core.config import (
     get_output_dir, get_system_names, get_selection,
     get_stride, get_sim_length, is_force_recompute, get_analysis_params,
 )
-from membrane_analysis.core.plotting import line_plot, save_figure, multi_system_figure
+from membrane_analysis.core.plotting import line_plot, save_figure, multi_system_figure, overlay_line_plot
 import matplotlib.pyplot as plt
 
 
@@ -77,3 +77,6 @@ def plot(cfg, results):
     fig.supxlabel("Time (us)", fontsize=20)
     fig.supylabel("Bilayer Thickness (A)", fontsize=20)
     save_figure(fig, os.path.join(outdir, "pp_distance_all.png"))
+
+    overlay_line_plot(results, sim_us, "Bilayer Thickness (A)",
+                      os.path.join(outdir, "pp_distance_comparison.png"), ma_window=ma)

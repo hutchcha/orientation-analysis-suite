@@ -8,6 +8,11 @@ import pandas as pd
 import matplotlib
 import matplotlib.pyplot as plt
 
+COMPARISON_COLORS = [
+    "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728",
+    "#9467bd", "#8c564b", "#e377c2", "#7f7f7f",
+]
+
 
 # ── Global style ──────────────────────────────────────────────────────────────
 
@@ -83,6 +88,40 @@ def multi_system_figure(n_systems, sharex=True, sharey=True, ax_w=5, ax_h=4):
     for ax in axes_flat[n_systems:]:
         ax.set_visible(False)
     return fig, list(axes_flat[:n_systems])
+
+
+# ── Overlay comparison plot ───────────────────────────────────────────────────
+
+def overlay_line_plot(results_dict, sim_us, ylabel, outpath, ma_window=50,
+                      ax_w=8, ax_h=4):
+    """All systems overlaid on a single axes with unique colors.
+
+    Each system's raw trace is drawn at low alpha; the moving average carries
+    the legend label.  Only generates a file when results_dict has > 1 entry.
+
+    Parameters
+    ----------
+    results_dict : dict {name: 1D array}
+    sim_us : float  — total simulation length in microseconds
+    ylabel : str
+    outpath : str
+    ma_window : int
+    """
+    if len(results_dict) < 2:
+        return
+
+    fig, ax = plt.subplots(figsize=(ax_w, ax_h), constrained_layout=True)
+    for i, (name, arr) in enumerate(results_dict.items()):
+        color   = COMPARISON_COLORS[i % len(COMPARISON_COLORS)]
+        arr     = np.asarray(arr, dtype=float)
+        xvalues = np.linspace(0, sim_us, len(arr))
+        mov_avg = pd.Series(arr).rolling(window=ma_window, center=True).mean()
+        ax.plot(xvalues, arr,            alpha=0.15, color=color, zorder=1)
+        ax.plot(xvalues, mov_avg.values, alpha=1.0,  color=color, zorder=2,
+                label=name, linewidth=1.5)
+    ax.legend(fontsize=12, frameon=False)
+    style_axes(ax, xlabel="Time (us)", ylabel=ylabel)
+    save_figure(fig, outpath)
 
 
 # ── Figure saving ─────────────────────────────────────────────────────────────
