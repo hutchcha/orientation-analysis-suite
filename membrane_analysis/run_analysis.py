@@ -140,7 +140,7 @@ def run_pipeline(cfg, mode="all", plot_only=False, recompute_keys=None):
 
 STATS_MODULES = {
     "clustering": "membrane_analysis.analyses.clustering",
-    # "gmm":        "membrane_analysis.analyses.gmm",
+    "gmm":        "membrane_analysis.analyses.gmm",
     "kinetics":   "membrane_analysis.analyses.kinetics",
 }
 
@@ -151,9 +151,6 @@ def run_stats_pipeline(cfg, stats_cfg):
     Each stats module reads from the feature assembly layer, which
     resolves cached data from the main pipeline.
     """
-    outdir = get_output_dir(cfg)
-    names  = get_system_names(cfg)
-
     print(f"\n{'='*60}")
     print("  Statistical Analysis Pipeline")
     print(f"{'='*60}\n")
@@ -173,21 +170,18 @@ def run_stats_pipeline(cfg, stats_cfg):
         print(f"  Feature set: {feature_set_name}")
         print(f"{'-'*40}")
 
-        try:
-            fs_cfg = get_feature_set(stats_cfg, feature_set_name)
-        except KeyError as e:
-            print(f"  ERROR: {e}")
-            continue
+        mod = import_module(module_path)
 
-        # Assemble features for each system
-        for name in names:
-            try:
-                X, columns, meta = assemble_features(outdir, fs_cfg, name)
-                print(f"  [{name}] Feature matrix: {X.shape} "
-                      f"(transform={meta['transform']})")
-            except (FileNotFoundError, KeyError) as e:
-                print(f"  [{name}] {e}")
-                continue
+        try:
+            # Stats modules take (cfg, stats_cfg) instead of (cfg, universes)
+            results = mod.compute(cfg, stats_cfg)
+            if results:
+                print(f"  Plotting {module_key}...")
+                mod.plot(cfg, stats_cfg, results)
+        except Exception as e:
+            print(f"  ERROR in {module_key}: {e}")
+            import traceback
+            traceback.print_exc()
 
     print(f"\n{'='*60}")
     print("  Stats pipeline complete.")
