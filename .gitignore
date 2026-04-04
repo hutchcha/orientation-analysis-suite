@@ -39,7 +39,7 @@ membrane_analysis/results/
 .claude/
 
 # Project management docs (local only)
-*.md
+PROGRESS.md
 
 # OS
 .DS_Store
