@@ -208,11 +208,15 @@ analyses:
       # HDBSCAN — density-based, no fixed cluster count
       hdbscan:
         min_cluster_size: 200   # used when auto_mcs is false
-        min_samples: null       # null = min_cluster_size
-        auto_mcs: false         # set true to sweep MCS via DBCV and auto-select
-        sweep_n: 25             # number of MCS values in the sweep
+        min_samples: null       # null = min_cluster_size // 2
+        cluster_selection_method: eom  # "eom" (Excess of Mass) or "leaf"
+        auto_mcs: false         # set true to sweep (MCS x min_samples) via DBCV
+        sweep_n_mcs: 15         # MCS values in the 2-D sweep grid
+        sweep_n_ms: 8           # min_samples values in the 2-D sweep grid
         mcs_min: 50             # smallest MCS to sweep
         mcs_max: null           # null = 5% of subsample size
+        ms_min: 5               # smallest min_samples to sweep
+        ms_max: null            # null = mcs_max
         sweep_subsample: 20000  # frames used during the sweep (for speed)
       # K-means — centroid-based, requires a fixed cluster count
       kmeans:

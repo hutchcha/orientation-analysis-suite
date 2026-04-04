@@ -52,8 +52,9 @@ from membrane_analysis.core.plotting import style_axes, save_figure
 from membrane_analysis.analyses.tilt_rotation import polar_density_plot
 from membrane_analysis.analyses.hdbscan_explorer import (
     _sph_to_cart, _cart_to_angles, _cluster_color, _COLORS,
-    sweep_mcs, find_optimal_mcs, run_hdbscan as explorer_run_hdbscan,
-    plot_sweep, plot_condensed_tree, plot_polar_clustered,
+    sweep_params, run_hdbscan as explorer_run_hdbscan,
+    plot_sweep_2d, plot_sweep_1d,
+    plot_condensed_tree, plot_polar_clustered,
     plot_scatter_clustered, plot_timeseries_clustered,
 )
 
@@ -92,47 +93,55 @@ def _cluster_summary(labels, X_cart, n_frames):
 def _run_hdbscan(tilt, rot, params):
     """Cluster (tilt, rot) with HDBSCAN on the unit sphere.
 
-    If ``auto_mcs`` is true in params, runs a DBCV sweep to pick the optimal
-    min_cluster_size.  Otherwise uses the configured value directly.
+    If ``auto_mcs`` is true, runs a 2-D (MCS x min_samples) DBCV sweep
+    to pick the optimal parameters.  Otherwise uses configured values.
 
-    Returns dict with keys: clusters, labels, auto_mcs, optimal_mcs,
-    sweep (if auto), condensed_tree_df.
+    Supports ``cluster_selection_method``: "eom" (default) or "leaf".
     """
-    auto = params.get("auto_mcs", False)
+    auto   = params.get("auto_mcs", False)
+    method = params.get("cluster_selection_method", "eom")
 
     if auto:
-        sweep_n    = int(params.get("sweep_n", 25))
-        mcs_min    = int(params.get("mcs_min", 50))
-        mcs_max    = params.get("mcs_max")
-        subsample  = int(params.get("sweep_subsample", 20_000))
-        ms_final   = params.get("min_samples")
+        sweep_n_mcs = int(params.get("sweep_n_mcs", params.get("sweep_n", 15)))
+        sweep_n_ms  = int(params.get("sweep_n_ms", 8))
+        mcs_min     = int(params.get("mcs_min", 50))
+        mcs_max     = params.get("mcs_max")
+        ms_min      = int(params.get("ms_min", 5))
+        ms_max      = params.get("ms_max")
+        subsample   = int(params.get("sweep_subsample", 20_000))
 
         n_sub    = min(subsample, len(tilt))
         _mcs_max = int(mcs_max) if mcs_max is not None else max(mcs_min + 1, n_sub // 20)
-        mcs_range = np.unique(np.linspace(mcs_min, _mcs_max, sweep_n, dtype=int))
+        _ms_max  = int(ms_max) if ms_max is not None else _mcs_max
 
-        print(f"    Auto MCS sweep: {mcs_range[0]}-{mcs_range[-1]} "
-              f"({len(mcs_range)} values, subsample={n_sub})...")
-        mcs_arr, noise_fracs, dbcv_scores = sweep_mcs(
-            tilt, rot, mcs_range, subsample=n_sub)
+        mcs_range = np.unique(np.linspace(mcs_min, _mcs_max, sweep_n_mcs, dtype=int))
+        ms_range  = np.unique(np.linspace(ms_min, _ms_max, sweep_n_ms, dtype=int))
 
-        if len(mcs_arr) == 0:
-            print("    Sweep produced no results — falling back to default MCS.")
+        total = sum(1 for m in mcs_range for s in ms_range
+                    if s <= m and m < n_sub // 2)
+        print(f"    Auto sweep: {len(mcs_range)} MCS x {len(ms_range)} ms "
+              f"= {total} combos (method={method}, subsample={n_sub})...")
+
+        sweep_results, best = sweep_params(
+            tilt, rot, mcs_range, ms_range,
+            subsample=n_sub, method=method,
+        )
+
+        if best is None:
+            print("    Sweep produced no results — falling back to defaults.")
             mcs = int(params.get("min_cluster_size", 200))
+            ms  = int(params.get("min_samples") or max(5, mcs // 2))
             sweep_data = None
         else:
-            mcs, best_dbcv = find_optimal_mcs(mcs_arr, dbcv_scores)
-            print(f"    Optimal MCS = {mcs}  (DBCV = {best_dbcv:.4f})")
-            sweep_data = {
-                "mcs_values":  mcs_arr,
-                "noise_fracs": noise_fracs,
-                "dbcv_scores": dbcv_scores,
-            }
+            mcs = best["mcs"]
+            ms  = best["ms"]
+            print(f"    Optimal: MCS={mcs}  ms={ms}  k={best['n_clusters']}  "
+                  f"noise={best['noise_frac']:.1%}  DBCV={best['dbcv']:.4f}")
+            sweep_data = {"results": sweep_results, "best": best}
 
         clusterer, labels, clusters = explorer_run_hdbscan(
-            tilt, rot, mcs, min_samples=ms_final)
+            tilt, rot, mcs, min_samples=ms, method=method)
 
-        # store condensed tree as DataFrame for plotting later
         try:
             ct_df = clusterer.condensed_tree_.to_pandas()
         except Exception:
@@ -143,44 +152,49 @@ def _run_hdbscan(tilt, rot, params):
             "labels":             labels,
             "auto_mcs":           True,
             "optimal_mcs":        mcs,
+            "optimal_ms":         ms,
+            "method":             method,
             "sweep":              sweep_data,
             "condensed_tree_df":  ct_df,
             "n_points":           len(labels),
         }
 
     else:
-        # Fixed MCS — original behaviour
+        # Fixed parameters
         try:
             import hdbscan
         except ImportError:
             print("    hdbscan not installed — skipping HDBSCAN.")
             return {
                 "clusters": [], "labels": np.full(len(tilt), -1, dtype=int),
-                "auto_mcs": False, "optimal_mcs": None,
-                "sweep": None, "condensed_tree_df": None,
+                "auto_mcs": False, "optimal_mcs": None, "optimal_ms": None,
+                "method": method, "sweep": None, "condensed_tree_df": None,
                 "n_points": len(tilt),
             }
 
         mcs = int(params.get("min_cluster_size", 200))
         ms  = params.get("min_samples") or max(5, mcs // 2)
+        ms  = int(ms)
 
         X = _sph_to_cart(rot, tilt)
         labels = hdbscan.HDBSCAN(
             min_cluster_size=mcs, min_samples=ms,
+            cluster_selection_method=method,
             gen_min_span_tree=True,
         ).fit_predict(X)
 
         clusters = _cluster_summary(labels, X, len(tilt))
         noise_frac = (labels == -1).sum() / len(labels)
-        print(f"    HDBSCAN: {len(clusters)} clusters, {noise_frac:.1%} noise")
+        print(f"    HDBSCAN: {len(clusters)} clusters, {noise_frac:.1%} noise "
+              f"(MCS={mcs}, ms={ms}, method={method})")
         for c in clusters:
             print(f"      cluster {c['label']}: rot={c['rotation_deg_mean']:.1f}  "
                   f"tilt={c['tilt_deg_mean']:.1f}  pop={c['pop_fraction']:.3f}")
 
         return {
             "clusters": clusters, "labels": labels,
-            "auto_mcs": False, "optimal_mcs": mcs,
-            "sweep": None, "condensed_tree_df": None,
+            "auto_mcs": False, "optimal_mcs": mcs, "optimal_ms": ms,
+            "method": method, "sweep": None, "condensed_tree_df": None,
             "n_points": len(tilt),
         }
 
@@ -310,10 +324,13 @@ def plot(cfg, results):
         # Auto MCS: sweep and condensed tree plots
         if hdb.get("auto_mcs") and hdb.get("sweep") is not None:
             sw = hdb["sweep"]
-            plot_sweep(
-                sw["mcs_values"], sw["noise_fracs"], sw["dbcv_scores"],
-                hdb["optimal_mcs"],
-                os.path.join(outdir, f"{name}_hdbscan_sweep.png"),
+            plot_sweep_2d(
+                sw["results"], sw["best"],
+                os.path.join(outdir, f"{name}_hdbscan_sweep_2d.png"),
+            )
+            plot_sweep_1d(
+                sw["results"], sw["best"],
+                os.path.join(outdir, f"{name}_hdbscan_sweep_1d.png"),
             )
 
         if hdb.get("condensed_tree_df") is not None:
