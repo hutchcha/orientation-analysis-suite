@@ -139,17 +139,17 @@ See [CLUSTERING_KINETICS.md](CLUSTERING_KINETICS.md) for detailed documentation 
 
 ## Tilt & Rotation Algorithm
 
-The orientation analysis is based on the method described in:
+The orientation analysis follows the method described in:
 
-> Neale, C. & Garcia, A. E. The Plasma Membrane as a Competitive Inhibitor and Positive Allosteric Modulator of KRas4B Signaling. *Biophysical Journal* 118, 1129-1141 (2020).
+> Travers, T., Lopez, C. A., Van, Q. N. et al. Molecular recognition of RAS/RAF complex at the membrane: Role of RAF cysteine-rich domain. *Sci Rep* 8, 8461 (2018). https://doi.org/10.1038/s41598-018-26832-4
 
-The protein orientation is defined by a helix axis vector (typically alpha-5):
+The protein orientation is defined by a helix axis vector (typically alpha-5) and a structural reference group (e.g., alpha-2/switch-II):
 
-- **Tilt**: angle between the helix axis unit vector and the membrane normal. Range: [0, 180] degrees. 0 = axis parallel to normal (upright), 90 = axis in membrane plane.
+- **Tilt (theta_t)**: angle between the helix axis unit vector (z') and the membrane normal (z). Range: [0, 180] degrees. 0 = axis parallel to normal (upright), 90 = axis in membrane plane.
 
-- **Rotation**: measured in the plane that is (1) perpendicular to the helix axis vector and (2) passes through the N-terminal anchor point of the helix. A pointer vector is constructed from this anchor point to the COM of a structural reference group (e.g., the alpha-2/switch-II helix). Both a reference vector (the helix axis from the minimum-tilt frame) and this pointer vector are projected onto the plane, and the directed angle between them is the rotation. Range: (-180, +180] degrees.
+- **Rotation (theta_r)**: at each frame, define the plane S perpendicular to the helix axis (z') and passing through the reference group COM. Project the membrane normal (z) onto S to get vector p. Construct the pointer vector a from the helix endpoint to the reference group COM (already in S by construction). The rotation angle is the directed angle from a to p around z'.
 
-The plane construction is critical: it is orthogonal to the helix axis (not the membrane normal), anchored at the helix endpoint. This means the rotation measures how the protein "spins" around its own axis relative to a fixed structural feature, not relative to the membrane.
+The membrane normal serves as the rotation reference, so rotation = 0 means the reference group is pointing in the same in-plane direction as the membrane normal's projection. This is well-defined regardless of whether the protein ever samples low tilt angles.
 
 **Membrane normal**: estimated from upper/lower leaflet phosphorus COMs at frame 0, or manually specified via `membrane_normal: [x, y, z]` in the per-system config.
 
@@ -185,7 +185,7 @@ This pipeline relies on several open-source tools and is based on published meth
 
 **Orientation analysis method:**
 
-1. Neale, C. & Garcia, A. E. The Plasma Membrane as a Competitive Inhibitor and Positive Allosteric Modulator of KRas4B Signaling. *Biophysical Journal* 118, 1129-1141 (2020).
+1. Travers, T., Lopez, C. A., Van, Q. N. et al. Molecular recognition of RAS/RAF complex at the membrane: Role of RAF cysteine-rich domain. *Sci Rep* 8, 8461 (2018). https://doi.org/10.1038/s41598-018-26832-4
 
 **Core dependencies:**
 

@@ -12,14 +12,16 @@ Angle between the helix axis vector and the membrane normal. Range: [0°, 180°]
 
 Rotation
 --------
-Measured in the plane perpendicular to the helix axis, passing through the
-N-terminal anchor point of that axis.  At each frame:
-  1. A reference vector (the α5 vector from the minimum-tilt frame) is projected
-     onto this plane.
-  2. The rotation-pointer vector (from the α5 N-terminal anchor to the
-     ``rotation_reference`` COM) is projected onto the same plane.
-  3. The directed angle from the reference projection to the pointer projection,
-     using the axis as the rotation normal, is the rotation angle.
+Following Travers et al. (Sci Rep 8, 8461, 2018):
+  - z' = helix axis direction (current frame)
+  - S  = plane perpendicular to z', passing through the rotation reference
+         group COM (e.g. H2/switch-II)
+  - p  = projection of the membrane normal (z) onto plane S
+  - a  = vector in S from the helix endpoint to the reference group COM
+
+theta_r is the directed angle from a to p around z'.  This definition uses
+the membrane normal as the rotation reference, so it is well-defined
+regardless of whether the protein ever samples low tilt angles.
 
 Range: (−180°, +180°].
 
@@ -122,34 +124,32 @@ def estimate_membrane_normal(u, phosphorus_sel):
 # ── Core angle computation ────────────────────────────────────────────────────
 
 def compute_angles(u, start_sel, end_sel, ref_sel, normal, stride=1):
-    """Compute per-frame tilt and rotation angles in two trajectory passes.
+    """Compute per-frame tilt and rotation angles.
 
-    Pass 1 — tilt
-        Compute the angle between the normalised axis vector (start→end) and
-        the membrane normal for every strided frame.  All axis vectors are
-        stored for use in pass 2.
+    Tilt (theta_t)
+        Angle between the helix axis unit vector (z') and the membrane
+        normal (z).  Range: [0, 180] degrees.
 
-    Reference-frame selection
-        The frame with the minimum tilt angle (axis most aligned with the
-        normal) provides the reference axis vector used to anchor rotation=0.
+    Rotation (theta_r)
+        Following Travers et al. (2018):
+        - z' = helix axis direction (current frame)
+        - S  = plane perpendicular to z', passing through H2COM
+        - p  = projection of the membrane normal z onto plane S
+        - a  = vector in S from the z' axis to H2COM (pointer vector)
+        - theta_r = directed angle from a to p around z'
 
-    Pass 2 — rotation
-        At each frame, both the reference vector and the pointer vector
-        (end_COM → ref_COM) are projected onto the plane perpendicular to the
-        axis, then the directed angle between the two projections is the
-        rotation angle.
+        The membrane normal serves as the rotation reference, so rotation=0
+        means the reference group points in the same in-plane direction as
+        the membrane normal's projection.  This is well-defined regardless
+        of whether the protein ever samples low tilt.
 
     Parameters
     ----------
     u : MDAnalysis.Universe
-    start_sel : str
-        C-terminal anchor of the helix axis (e.g. "resid 177 and name CA").
-    end_sel : str
-        N-terminal anchor of the helix axis (e.g. "resid 169 and name CA").
-    ref_sel : str
-        Rotation pointer group (e.g. "protein and resid 89:93").
-    normal : (3,) ndarray
-        Unit vector for the membrane normal.
+    start_sel : str   — C-terminal anchor of the helix axis
+    end_sel : str     — N-terminal anchor of the helix axis
+    ref_sel : str     — rotation pointer group (e.g. H2/switch-II)
+    normal : (3,) ndarray — membrane normal unit vector
     stride : int
 
     Returns
@@ -190,14 +190,10 @@ def compute_angles(u, start_sel, end_sel, ref_sel, normal, stride=1):
         start_ag, end_ag = end_ag, start_ag
         print("    Axis auto-flipped: frame-0 vector was antiparallel to normal.")
 
-    # Reference vector = axis from the minimum-tilt frame
-    valid_mask     = np.isfinite(tilts)
-    min_tilt_idx   = int(np.where(valid_mask)[0][np.nanargmin(tilts[valid_mask])])
-    reference_vec  = axis_vectors[min_tilt_idx]
-    print(f"    Reference frame index: {min_tilt_idx}  "
-          f"(tilt = {tilts[min_tilt_idx]:.2f}°)")
-
     # ── Pass 2: rotation ─────────────────────────────────────────────────────
+    # Reference vector = membrane normal (projected onto each frame's
+    # helix-perpendicular plane).  This replaces the old min-tilt-frame
+    # reference and is well-defined for any tilt angle.
     rots = []
 
     for f_idx, _ts in enumerate(tqdm(u.trajectory[::stride], desc="  rotation")):
@@ -208,21 +204,23 @@ def compute_angles(u, start_sel, end_sel, ref_sel, normal, stride=1):
 
         com_end = end_ag.center_of_mass()
         com_ref = ref_ag.center_of_mass()
-        h2vec   = com_ref - com_end  # pointer from axis tip → reference group
+        h2vec   = com_ref - com_end  # pointer (a): axis tip -> reference group
 
-        proj_ref = _project_onto_plane(a5vec, reference_vec)
-        proj_h2  = _project_onto_plane(a5vec, h2vec)
+        # p = projection of membrane normal onto plane perp to z'
+        proj_normal = _project_onto_plane(a5vec, normal)
+        # a = projection of pointer onto same plane
+        proj_h2     = _project_onto_plane(a5vec, h2vec)
 
-        n_ref = np.linalg.norm(proj_ref)
-        n_h2  = np.linalg.norm(proj_h2)
-        if n_ref < 1e-12 or n_h2 < 1e-12:
+        n_norm = np.linalg.norm(proj_normal)
+        n_h2   = np.linalg.norm(proj_h2)
+        if n_norm < 1e-12 or n_h2 < 1e-12:
             rots.append(np.nan)
             continue
 
         axis_unit = a5vec / np.linalg.norm(a5vec)
         rot = _directed_angle_deg(
-            proj_ref / n_ref,
-            proj_h2  / n_h2,
+            proj_h2     / n_h2,     # a (pointer)
+            proj_normal / n_norm,   # p (normal projection)
             axis_unit,
         )
         rots.append(rot)
