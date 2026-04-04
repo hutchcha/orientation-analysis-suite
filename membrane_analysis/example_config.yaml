@@ -204,8 +204,13 @@ analyses:
       enabled: true
       # HDBSCAN — density-based, no fixed cluster count
       hdbscan:
-        min_cluster_size: 200   # minimum frames to form a cluster
-        min_samples: null       # null = min_cluster_size // 2
+        min_cluster_size: 200   # used when auto_mcs is false
+        min_samples: null       # null = min_cluster_size
+        auto_mcs: false         # set true to sweep MCS via DBCV and auto-select
+        sweep_n: 25             # number of MCS values in the sweep
+        mcs_min: 50             # smallest MCS to sweep
+        mcs_max: null           # null = 5% of subsample size
+        sweep_subsample: 20000  # frames used during the sweep (for speed)
       # K-means — centroid-based, requires a fixed cluster count
       kmeans:
         n_clusters: 3

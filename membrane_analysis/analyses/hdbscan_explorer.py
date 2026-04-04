@@ -313,6 +313,39 @@ def plot_polar_clustered(tilt, rot, clusters, outpath, label=""):
     save_figure(fig, outpath)
 
 
+def plot_scatter_clustered(tilt, rot, labels, clusters, outpath, label=""):
+    """2D scatter of rotation vs tilt with points coloured by cluster assignment."""
+    fig, ax = plt.subplots(figsize=(8, 6), constrained_layout=True)
+
+    # noise first (background)
+    noise_mask = labels == -1
+    if noise_mask.any():
+        ax.scatter(rot[noise_mask], tilt[noise_mask], s=1, c="lightgrey",
+                   alpha=0.3, rasterized=True, label="noise", zorder=1)
+
+    # clusters on top
+    for c in clusters:
+        lab  = c["label"]
+        mask = labels == lab
+        color = _cluster_color(lab)
+        ax.scatter(rot[mask], tilt[mask], s=2, c=color, alpha=0.5,
+                   rasterized=True, label=f"cluster {lab} ({c['pop_fraction']:.1%})",
+                   zorder=2)
+        # mark centre
+        ax.plot(c["rotation_deg_mean"], c["tilt_deg_mean"],
+                marker="*", ms=16, color=color,
+                markeredgecolor="black", markeredgewidth=0.8, zorder=3)
+
+    style_axes(ax, title=label if label else "HDBSCAN clusters",
+               xlabel="Rotation (deg)", ylabel="Tilt (deg)")
+    ax.set_xlim(-185, 185)
+    ax.set_ylim(0, max(tilt.max() + 5, 135))
+    ax.legend(fontsize=10, frameon=True, framealpha=0.8, markerscale=5,
+              loc="upper right")
+
+    save_figure(fig, outpath)
+
+
 def plot_timeseries_clustered(tilt, rot, labels, outpath, label=""):
     """Two-panel scatter time series (rotation top, tilt bottom) coloured by cluster."""
     fig, (ax_rot, ax_tilt) = plt.subplots(2, 1, figsize=(12, 6),
@@ -399,9 +432,11 @@ def run_exploration(tilt, rot, outdir,
     plot_condensed_tree(clusterer, prefix + "condensed_tree.png", label=label)
 
     # ── 4. Clustered polar + time series ─────────────────────────────────────
-    print("\n[4/4] Polar density and time series...")
+    print("\n[4/4] Polar density, scatter, and time series...")
     plot_polar_clustered(tilt, rot, clusters,
                          prefix + "polar_clustered.png", label=label)
+    plot_scatter_clustered(tilt, rot, labels, clusters,
+                           prefix + "scatter_clustered.png", label=label)
     plot_timeseries_clustered(tilt, rot, labels,
                               prefix + "timeseries_clustered.png", label=label)
 
