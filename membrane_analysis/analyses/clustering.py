@@ -43,7 +43,7 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 from math import atan2
 
-from membrane_analysis.core.io import cached_compute
+from membrane_analysis.core.io import cached_compute, save_per_system
 from membrane_analysis.core.config import (
     get_output_dir, get_system_names, get_sim_length,
     is_force_recompute, get_analysis_params,
@@ -201,20 +201,19 @@ def _run_hdbscan(tilt, rot, params):
 
 # ── K-means ──────────────────────────────────────────────────────────────────
 
-def _run_kmeans(tilt, rot, params):
-    """Cluster (tilt, rot) with K-means on the unit sphere.
+def _run_kmeans(X, params):
+    """Cluster feature matrix X with K-means.
 
     Returns dict with keys: clusters, labels.
     """
     from sklearn.cluster import KMeans
 
     k = params.get("n_clusters", 3)
-    X = _sph_to_cart(rot, tilt)
 
     km = KMeans(n_clusters=k, random_state=42, n_init="auto")
     labels = km.fit_predict(X)
 
-    clusters = _cluster_summary(labels, X, len(tilt))
+    clusters = _cluster_summary(labels, X, len(X))
     print(f"    K-means (k={k}):")
     for c in clusters:
         print(f"      cluster {c['label']}: rot={c['rotation_deg_mean']:.1f}  "
@@ -224,64 +223,90 @@ def _run_kmeans(tilt, rot, params):
 
 # ── Top-level compute ────────────────────────────────────────────────────────
 
-def compute(cfg, universes):
-    """Load tilt/rotation results and cluster orientation states.
+def compute(cfg, universes_or_stats_cfg=None):
+    """Cluster orientation states.
 
-    ``universes`` is not used; the function reads from the tilt_rotation cache.
+    Supports two calling conventions:
+      - ``compute(cfg, universes)`` — main pipeline, reads tilt_rotation cache
+        with params from the main config's ``analyses.analysis.clustering`` block.
+      - ``compute(cfg, stats_cfg)``  — stats pipeline, assembles features via
+        core/features.py using the stats config.
 
-    Returns
-    -------
-    dict : {name: {"hdbscan": {...}, "kmeans": {...}}}
+    The stats pipeline path is used when universes_or_stats_cfg is a dict
+    containing a ``feature_sets`` key.
     """
-    outdir     = os.path.join(get_output_dir(cfg), ANALYSIS_KEY)
-    cache      = os.path.join(outdir, "clustering.pkl")
-    force      = is_force_recompute(cfg)
-    params     = get_analysis_params(cfg, ANALYSIS_KEY)
+    # Detect which path to use
+    is_stats = (isinstance(universes_or_stats_cfg, dict)
+                and "feature_sets" in universes_or_stats_cfg)
 
-    # path to the tilt_rotation results
-    tr_cache = os.path.join(get_output_dir(cfg), "tilt_rotation", "tilt_rotation.pkl")
+    outdir = os.path.join(get_output_dir(cfg), ANALYSIS_KEY)
+    cache  = os.path.join(outdir, "clustering.pkl")
+
+    if is_stats:
+        stats_cfg  = universes_or_stats_cfg
+        from membrane_analysis.core.config import get_stats_params, get_feature_set
+        from membrane_analysis.core.features import assemble_features
+
+        params     = get_stats_params(stats_cfg, ANALYSIS_KEY)
+        fs_name    = params.get("feature_set")
+        fs_cfg     = get_feature_set(stats_cfg, fs_name)
+        hdb_params = params.get("hdbscan", {})
+        km_params  = params.get("kmeans", {})
+    else:
+        params     = get_analysis_params(cfg, ANALYSIS_KEY)
+        hdb_params = params.get("hdbscan", {})
+        km_params  = params.get("kmeans", {})
+
+    force = is_force_recompute(cfg) if not is_stats else True
 
     def _run():
-        if not os.path.exists(tr_cache):
-            raise FileNotFoundError(
-                f"tilt_rotation cache not found at {tr_cache}. "
-                "Run tilt_rotation first."
-            )
-        with open(tr_cache, "rb") as fh:
-            tr_data = pickle.load(fh)
-
-        hdb_params = params.get("hdbscan", {})
-        km_params  = params.get("kmeans",  {})
-
         results = {}
         for name in get_system_names(cfg):
-            if name not in tr_data:
-                print(f"  [{name}] No tilt_rotation data found, skipping.")
+            if is_stats:
+                # ── Stats pipeline: use feature assembly ─────────────────
+                try:
+                    X, columns, meta = assemble_features(
+                        get_output_dir(cfg), fs_cfg, name)
+                except (FileNotFoundError, KeyError) as e:
+                    print(f"  [{name}] {e}")
+                    continue
+
+                print(f"  [{name}] Feature matrix: {X.shape} "
+                      f"(transform={meta['transform']})")
+
+                # For HDBSCAN we need tilt/rot angles. If the transform was
+                # unit_sphere or spherical, we can extract from the raw cache.
+                # The HDBSCAN functions operate on tilt/rot directly for the
+                # sphere embedding. For non-angular features, we'd need a
+                # different approach — for now, fall through to the old
+                # tilt/rot path if angular features are present.
+                tilt, rot, valid_mask, full_len = _load_tilt_rot(cfg, name)
+            else:
+                # ── Main pipeline: load tilt_rotation directly ───────────
+                tilt, rot, valid_mask, full_len = _load_tilt_rot(cfg, name)
+
+            if tilt is None:
                 continue
 
-            tilt = tr_data[name]["tilt"]
-            rot  = tr_data[name]["rotation"]
+            tilt_v = tilt[valid_mask]
+            rot_v  = rot[valid_mask]
 
-            # drop NaN frames before clustering
-            valid = np.isfinite(tilt) & np.isfinite(rot)
-            if valid.sum() < 10:
+            if len(tilt_v) < 10:
                 print(f"  [{name}] Too few valid frames for clustering.")
                 continue
-
-            tilt_v = tilt[valid]
-            rot_v  = rot[valid]
 
             print(f"  [{name}] HDBSCAN...")
             hdb_result = _run_hdbscan(tilt_v, rot_v, hdb_params)
 
             print(f"  [{name}] K-means...")
-            km_result = _run_kmeans(tilt_v, rot_v, km_params)
+            X_sphere = _sph_to_cart(rot_v, tilt_v)
+            km_result = _run_kmeans(X_sphere, km_params)
 
-            # expand labels back to full-length arrays (NaN frames -> -1)
-            full_hdb = np.full(len(tilt), -1, dtype=int)
-            full_km  = np.full(len(tilt), -1, dtype=int)
-            full_hdb[valid] = hdb_result["labels"]
-            full_km[valid]  = km_result["labels"]
+            # expand labels back to full-length arrays
+            full_hdb = np.full(full_len, -1, dtype=int)
+            full_km  = np.full(full_len, -1, dtype=int)
+            full_hdb[valid_mask] = hdb_result["labels"]
+            full_km[valid_mask]  = km_result["labels"]
             hdb_result["labels"] = full_hdb
             km_result["labels"]  = full_km
 
@@ -289,14 +314,52 @@ def compute(cfg, universes):
                 "hdbscan": hdb_result,
                 "kmeans":  km_result,
             }
+
+        save_per_system(results, outdir, ANALYSIS_KEY)
         return results
 
     return cached_compute(cache, _run, force_recompute=force)
 
 
+def _load_tilt_rot(cfg, name):
+    """Load tilt/rotation arrays from the tilt_rotation cache.
+
+    Returns (tilt, rot, valid_mask, full_length) or (None, None, None, None).
+    """
+    tr_cache = os.path.join(get_output_dir(cfg), "tilt_rotation", "tilt_rotation.pkl")
+    if not os.path.exists(tr_cache):
+        print(f"  [{name}] tilt_rotation cache not found.")
+        return None, None, None, None
+
+    with open(tr_cache, "rb") as fh:
+        tr_data = pickle.load(fh)
+
+    if name not in tr_data:
+        print(f"  [{name}] Not found in tilt_rotation cache.")
+        return None, None, None, None
+
+    tilt = tr_data[name]["tilt"]
+    rot  = tr_data[name]["rotation"]
+    valid = np.isfinite(tilt) & np.isfinite(rot)
+
+    return tilt, rot, valid, len(tilt)
+
+
 # ── Top-level plot ───────────────────────────────────────────────────────────
 
-def plot(cfg, results):
+def plot(cfg, results_or_stats_cfg=None, results=None):
+    """Generate clustering plots.
+
+    Supports two call signatures:
+      - ``plot(cfg, results)``             — main pipeline
+      - ``plot(cfg, stats_cfg, results)``  — stats pipeline
+    """
+    if results is None:
+        results = results_or_stats_cfg
+    _plot_impl(cfg, results)
+
+
+def _plot_impl(cfg, results):
     """Generate clustering diagnostic plots for HDBSCAN and K-means per system."""
     outdir  = os.path.join(get_output_dir(cfg), ANALYSIS_KEY)
     sim_us  = get_sim_length(cfg)
