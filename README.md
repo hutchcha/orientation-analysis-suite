@@ -139,14 +139,21 @@ See [CLUSTERING_KINETICS.md](CLUSTERING_KINETICS.md) for detailed documentation 
 
 ## Tilt & Rotation Algorithm
 
+The orientation analysis is based on the method described in:
+
+> Li, Z. L., & Buck, M. (2017). "The Plasma Membrane as a Competitive Inhibitor and Positive Allosteric Modulator of KRas4B Signaling." *Biophysical Journal*, 113(5), 1071-1080.
+
 The protein orientation is defined by a helix axis vector (typically alpha-5):
 
-- **Tilt**: angle between the helix axis and the membrane normal. Range: [0, 180] degrees.
-- **Rotation**: directed angle in the plane perpendicular to the helix axis, measured from a reference vector (the axis at minimum tilt) to a pointer vector (axis endpoint to a reference group COM). Range: (-180, +180] degrees.
+- **Tilt**: angle between the helix axis unit vector and the membrane normal. Range: [0, 180] degrees. 0 = axis parallel to normal (upright), 90 = axis in membrane plane.
 
-The membrane normal is estimated from upper/lower leaflet phosphorus COMs at frame 0, or can be manually specified via `membrane_normal: [x, y, z]` in the per-system config.
+- **Rotation**: measured in the plane that is (1) perpendicular to the helix axis vector and (2) passes through the N-terminal anchor point of the helix. A pointer vector is constructed from this anchor point to the COM of a structural reference group (e.g., the alpha-2/switch-II helix). Both a reference vector (the helix axis from the minimum-tilt frame) and this pointer vector are projected onto the plane, and the directed angle between them is the rotation. Range: (-180, +180] degrees.
 
-An auto-flip check at frame 0 ensures the axis vector is consistently oriented relative to the membrane normal.
+The plane construction is critical: it is orthogonal to the helix axis (not the membrane normal), anchored at the helix endpoint. This means the rotation measures how the protein "spins" around its own axis relative to a fixed structural feature, not relative to the membrane.
+
+**Membrane normal**: estimated from upper/lower leaflet phosphorus COMs at frame 0, or manually specified via `membrane_normal: [x, y, z]` in the per-system config.
+
+**Auto-flip**: at frame 0, if the axis vector is antiparallel to the membrane normal, the start/end selections are swapped so tilt angles remain physically interpretable.
 
 ## Plotting
 
