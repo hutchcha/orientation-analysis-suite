@@ -38,6 +38,9 @@ membrane_analysis/results/
 # Claude Code local settings
 .claude/
 
+# Project management docs (local only)
+*.md
+
 # OS
 .DS_Store
 Thumbs.db
