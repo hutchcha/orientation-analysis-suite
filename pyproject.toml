@@ -23,6 +23,7 @@ dependencies = [
 
 [project.scripts]
 run-analysis = "membrane_analysis.run_analysis:main"
+traj-tools = "membrane_analysis.tools.trajtools:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
