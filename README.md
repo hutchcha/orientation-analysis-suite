@@ -2,6 +2,10 @@
 
 A modular, YAML-configured pipeline for MD simulation equilibration checks and membrane protein orientation analysis. Originally developed for Ras superfamily small GTPases (Rheb, RhoA), but designed to work with any membrane-bound protein system.
 
+A primary goal of this package is to be additive, meaning anyone can add analyses that output data in the format described below, which can be used with our plotter or added to main analysis pipeline. Eventually I'll implement a mix-and-match style pipeline option, where individual analysis scripts can be combined in various permutations for custom analysis pipelines. 
+
+Designed for single or multiple system work flows, simply add multiple systems to your config file and it will output both single plots and multi-system comparison plots.
+
 ## Installation
 
 Requires Python >= 3.10. Install via pip in editable mode:
