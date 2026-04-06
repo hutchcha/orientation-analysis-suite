@@ -205,6 +205,10 @@ This pipeline relies on several open-source tools and is based on published meth
 
 7. Smith, P. & Lorenz, C. D. LiPyphilic: A Python Toolkit for the Analysis of Lipid Membrane Simulations. *J. Chem. Theory Comput.* 17, 5907-5919 (2021).
 
+**Development:**
+
+This pipeline was built using [Claude Code](https://claude.ai/code) (Anthropic) from individual analysis scripts developed during doctoral research by Chase Hutchins.
+
 ## License
 
 This project is currently private. Contact the repository owner for access.
