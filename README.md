@@ -2,7 +2,7 @@
 
 A modular, YAML-configured pipeline for MD simulation equilibration checks and membrane protein orientation analysis. Originally developed for Ras superfamily small GTPases (Rheb, RhoA), but designed to work with any membrane-bound protein system.
 
-A primary goal of this package is to be additive, meaning anyone can add analyses that output data in the format described below, which can be used with our plotter or added to main analysis pipeline. Eventually I'll implement a mix-and-match style pipeline option, where individual analysis scripts can be combined in various permutations for custom analysis pipelines. 
+A primary goal of this package is to be additive, meaning anyone can add analyses that output data in the format described below, which can be used with our plotter or added to the main analysis pipeline. A separate **statistical analysis layer** (clustering, GMM, HMM kinetics) can mix and match arbitrary computed observables into a single feature matrix via a `stats.yaml` config — see [the `--stats` section below](#statistical-analysis-pipeline---stats).
 
 Designed for single or multiple system work flows, simply add multiple systems to your config file and it will output both single plots and multi-system comparison plots.
 
@@ -62,6 +62,10 @@ run-analysis my_config.yaml --plot-only
 
 # Force recompute specific analyses
 run-analysis my_config.yaml --recompute rmsd tilt_rotation
+
+# Run the main pipeline AND the statistical analysis layer
+# (clustering / GMM / HMM kinetics on assembled feature sets)
+run-analysis my_config.yaml --stats my_stats.yaml
 ```
 
 ## Architecture
@@ -70,9 +74,11 @@ run-analysis my_config.yaml --recompute rmsd tilt_rotation
 membrane_analysis/
 ├── run_analysis.py              # CLI entry point
 ├── example_config.yaml          # Documented example configuration
+├── example_stats.yaml           # Documented stats-layer configuration
 ├── core/
 │   ├── config.py                # YAML parsing, universe construction
 │   ├── io.py                    # Pickle cache-or-load helpers
+│   ├── features.py              # Feature assembly for the stats layer
 │   └── plotting.py              # Unified plotting utilities
 └── analyses/
     ├── rmsd.py                  # Protein RMSD
@@ -84,6 +90,7 @@ membrane_analysis/
     ├── hbonds.py                # H-bond counting + anchor RMSD
     ├── clustering.py            # HDBSCAN + K-means clustering
     ├── hdbscan_explorer.py      # HDBSCAN parameter exploration
+    ├── gmm.py                   # Gaussian mixture model + BIC/AIC sweep
     ├── contacts.py              # Residue-lipid contact frequency
     ├── inter_residue_distance.py# Inter-selection COM distance
     └── kinetics.py              # Bayesian HMM kinetics (pyemma)
@@ -137,9 +144,57 @@ All equilibration modules produce per-system time series with raw trace + moving
 |--------|-------------|
 | **clustering** | HDBSCAN + K-means on spherical embeddings of tilt/rotation. Optional auto MCS via DBCV sweep. |
 | **hdbscan_explorer** | Standalone HDBSCAN exploration: MCS sweep, DBCV validation, condensed tree, scatter plots. |
+| **gmm** | Gaussian mixture model with BIC/AIC component sweep. Per-frame state assignment + polar/scatter/timeseries plots. |
 | **kinetics** | Bayesian HMM via pyemma: implied timescale scan, transition matrix, MFPT, state populations, dwell times, CK test, flux network. |
 
 See [CLUSTERING_KINETICS.md](CLUSTERING_KINETICS.md) for detailed documentation of the clustering and kinetics modules.
+
+## Statistical Analysis Pipeline (`--stats`)
+
+`clustering`, `gmm`, and `kinetics` can be driven by a separate `stats.yaml` config that combines arbitrary cached observables into a single feature matrix. This decouples *what data to feed into the model* from *how the model is configured*, so you can re-cluster on tilt+rotation+distance without editing the main pipeline config.
+
+```bash
+run-analysis my_config.yaml --stats my_stats.yaml
+```
+
+The main pipeline runs first (loading from cache where possible), then the stats layer runs on top of those caches. See [`membrane_analysis/example_stats.yaml`](membrane_analysis/example_stats.yaml) for a fully documented example. Minimal sketch:
+
+```yaml
+feature_sets:
+  orientation_3d:
+    features:
+      - tilt_rotation.rotation
+      - tilt_rotation.tilt
+      - inter_residue_distance
+    transform: spherical              # rot+tilt+r → 3D Cartesian
+    radial_scale: 0.6
+
+clustering:
+  feature_set: orientation_3d
+  hdbscan: {min_cluster_size: 200, cluster_selection_method: eom}
+  kmeans:  {n_clusters: 3}
+
+gmm:
+  feature_set: orientation_3d
+  n_components: [3, 4, 5, 6]          # BIC/AIC sweep
+  covariance_type: full
+
+kinetics:
+  feature_set: orientation_3d
+  K: 4                                 # macro states
+  lag: 500                             # frames
+  dt_time: 0.1                         # ns/frame
+```
+
+**Feature key syntax**: `analysis_key` for a 1D array (e.g. `rmsd`, `inter_residue_distance`), or `analysis_key.sub_key` for a sub-field of a dict/DataFrame output (e.g. `tilt_rotation.tilt`, `lobe_com.Lobe1`).
+
+**Transforms** (set per feature_set):
+- `none` — column-stack as-is.
+- `unit_sphere` — exactly 2 angular features (rotation, tilt) → 3D Cartesian unit vectors.
+- `spherical` — 2 angular + 1+ scalar → spherical-to-Cartesian; first scalar is the radial coordinate.
+- `auto` (default) — inferred from the registered output type of each feature.
+
+To make a new module addressable by the stats layer, follow the same `compute(cfg, universes)` / `plot(cfg, results)` contract as the existing modules and register its output type via `core.features.register_feature(...)`.
 
 ## Tilt & Rotation Algorithm
 

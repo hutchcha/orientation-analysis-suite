@@ -5,17 +5,27 @@ input data.  Produces implied timescale scans, transition matrices, MFPT
 heatmaps, state populations, dwell times, Chapman-Kolmogorov validation,
 and flux network graphs.
 
-Data modes
-----------
-**spherical** — assembles (rotation, tilt, distance) from the tilt_rotation
-  and inter_residue_distance pipeline caches, transforms to 3-D Cartesian
-  via spherical_to_cartesian with configurable radial_scale.
+Calling conventions
+-------------------
+``compute(cfg, universes)``
+    Main-pipeline mode.  Parameters live under
+    ``analyses.analysis.kinetics`` in the main config.  Two data modes are
+    supported (``mode: spherical|direct``):
 
-**direct** — loads arbitrary column files (one value per line per file)
-  and stacks them as feature columns.  No spherical transform is applied.
+    - **spherical** — assembles (rotation, tilt, distance) from the
+      tilt_rotation and inter_residue_distance pipeline caches, transforms
+      to 3-D Cartesian via spherical_to_cartesian with configurable
+      radial_scale.
+    - **direct** — loads arbitrary column files (one value per line per
+      file) and stacks them as feature columns.  No spherical transform.
 
-Config fields (under analyses.analysis.kinetics)
--------------------------------------------------
+``compute(cfg, stats_cfg)``
+    Stats-pipeline mode.  Parameters live under ``kinetics`` in
+    ``stats.yaml`` and the feature matrix is assembled by
+    ``core.features.assemble_features`` from the named ``feature_set``.
+
+Config fields — main pipeline (``analyses.analysis.kinetics``)
+---------------------------------------------------------------
   enabled       : true/false
   mode          : "spherical" or "direct"
 
@@ -27,11 +37,9 @@ Config fields (under analyses.analysis.kinetics)
     - /path/to/feature1.txt
     - /path/to/feature2.txt
 
-  # microstate discretisation
+  # microstate discretisation, HMM parameters (shared with stats mode)
   micro_method  : "kmeans" or "gmm"  (default kmeans)
   K_micro       : int  (default 300)
-
-  # HMM parameters
   K             : int    (number of hidden states, default 4)
   lag           : int    (HMM lag in frames; 0 = ITS scan only)
   max_lag       : int    (max lag for ITS scan, default 5000)
@@ -41,6 +49,11 @@ Config fields (under analyses.analysis.kinetics)
   # optional state labelling
   state_labels  : {0: "OS1", 1: "OS2", ...}
   mfpt_order    : [2, 1, 0, 3]   # custom ordering for MFPT/population plots
+
+Config fields — stats pipeline (``stats.yaml`` ``kinetics`` block)
+-------------------------------------------------------------------
+Same as above, except ``mode``, ``radial_scale`` and ``custom_features``
+are dropped — feature selection is driven by ``feature_set`` instead.
 """
 
 import os
@@ -52,11 +65,13 @@ import matplotlib.pyplot as plt
 import matplotlib
 import networkx as nx
 
-from membrane_analysis.core.io import cached_compute
+from membrane_analysis.core.io import cached_compute, save_per_system
 from membrane_analysis.core.config import (
     get_output_dir, get_system_names, get_sim_length,
     is_force_recompute, get_analysis_params,
+    get_stats_params, get_feature_set,
 )
+from membrane_analysis.core.features import assemble_features
 from membrane_analysis.core.plotting import style_axes, save_figure
 
 ANALYSIS_KEY = "kinetics"
@@ -152,6 +167,24 @@ def _assemble_features_direct(cfg, name):
     return pts, None
 
 
+def _assemble_features_via_stats(cfg, stats_cfg, name):
+    """Stats-mode: build feature matrix via core.features.assemble_features.
+
+    Returns
+    -------
+    pts     : (N, D) ndarray
+    columns : list of str — feature column names
+    meta    : dict — includes "transform", "radial_scale", "valid_mask",
+              "min_len", "feature_keys"
+    """
+    kin_cfg = get_stats_params(stats_cfg, ANALYSIS_KEY)
+    fs_name = kin_cfg.get("feature_set")
+    if not fs_name:
+        raise ValueError("stats-mode kinetics requires 'feature_set' in stats config.")
+    fs_cfg = get_feature_set(stats_cfg, fs_name)
+    return assemble_features(get_output_dir(cfg), fs_cfg, name)
+
+
 # ── Microstate clustering ────────────────────────────────────────────────────
 
 def _cluster_microstates(pts, method, K_micro):
@@ -210,8 +243,16 @@ def _its_scan(dtrajs, K, dt_time, max_lag, nsamples=20, n_points=50):
 
 # ── HMM fitting ─────────────────────────────────────────────────────────────
 
-def _fit_hmm(dtrajs, K, lag, nsamples, dt_time, pts_xyz):
+def _fit_hmm(dtrajs, K, lag, nsamples, dt_time, pts_xyz, on_sphere=True):
     """Fit Bayesian HMM and extract all analysis quantities.
+
+    Parameters
+    ----------
+    on_sphere : bool
+        If True, state centres are computed as a "spherical mean" (project
+        the per-state COM onto the sphere of mean radius).  Use this when
+        the feature space is unit_sphere or spherical.  If False, plain
+        Euclidean COM is used (correct for arbitrary scalar features).
 
     Returns dict with T_sorted, pi_sorted, mfpt_ns, flux, sort_order,
     dtraj_macro, timescales_ns, ck_test data.
@@ -259,9 +300,12 @@ def _fit_hmm(dtrajs, K, lag, nsamples, dt_time, pts_xyz):
         mask = dtraj_macro == k
         if mask.sum() > 0:
             com = pts_xyz[mask].mean(axis=0)
-            radii = np.linalg.norm(pts_xyz[mask], axis=1)
-            if np.linalg.norm(com) > 1e-9:
-                centers[k] = (com / np.linalg.norm(com)) * radii.mean()
+            if on_sphere:
+                radii = np.linalg.norm(pts_xyz[mask], axis=1)
+                if np.linalg.norm(com) > 1e-9:
+                    centers[k] = (com / np.linalg.norm(com)) * radii.mean()
+                else:
+                    centers[k] = com
             else:
                 centers[k] = com
 
@@ -310,15 +354,34 @@ def _ck_test_data(dtrajs, msm_lag, K, T_model, dt_time, dtraj_macro, steps=9):
 
 # ── Top-level compute ────────────────────────────────────────────────────────
 
-def compute(cfg, universes):
-    """Run HMM kinetics analysis for all systems."""
+def compute(cfg, universes_or_stats_cfg=None):
+    """Run HMM kinetics analysis for all systems.
+
+    Supports two calling conventions:
+      - ``compute(cfg, universes)`` — main pipeline; uses
+        ``analyses.analysis.kinetics`` config and the spherical/direct
+        assembly modes.
+      - ``compute(cfg, stats_cfg)``  — stats pipeline; assembles features via
+        ``core/features.py`` from the named ``feature_set`` in stats config.
+
+    The stats path is detected when the second arg is a dict with a
+    ``feature_sets`` key.
+    """
+    is_stats = (isinstance(universes_or_stats_cfg, dict)
+                and "feature_sets" in universes_or_stats_cfg)
+
     outdir = os.path.join(get_output_dir(cfg), ANALYSIS_KEY)
     cache  = os.path.join(outdir, "kinetics.pkl")
-    force  = is_force_recompute(cfg)
-    params = get_analysis_params(cfg, ANALYSIS_KEY)
+
+    if is_stats:
+        stats_cfg = universes_or_stats_cfg
+        params    = get_stats_params(stats_cfg, ANALYSIS_KEY)
+        force     = True   # stats runs always recompute (feature_set may differ)
+    else:
+        params = get_analysis_params(cfg, ANALYSIS_KEY)
+        force  = is_force_recompute(cfg)
 
     def _run():
-        mode        = params.get("mode", "spherical")
         micro_meth  = params.get("micro_method", "kmeans")
         K_micro     = int(params.get("K_micro", 300))
         K           = int(params.get("K", 4))
@@ -327,19 +390,37 @@ def compute(cfg, universes):
         dt_time     = float(params.get("dt_time", 0.1))
         nsamples    = int(params.get("nsamples", 100))
 
+        # Main-pipeline assembly mode (ignored in stats mode)
+        mode = params.get("mode", "spherical")
+
         results = {}
         for name in get_system_names(cfg):
-            print(f"  [{name}] Assembling features (mode={mode})...")
+            transform = None
+            columns   = None
+            meta      = None
+            raw       = None
+
             try:
-                if mode == "spherical":
-                    pts, raw = _assemble_features_spherical(cfg, name)
+                if is_stats:
+                    print(f"  [{name}] Assembling features (stats mode)...")
+                    pts, columns, meta = _assemble_features_via_stats(
+                        cfg, stats_cfg, name)
+                    transform = meta.get("transform")
                 else:
-                    pts, raw = _assemble_features_direct(cfg, name)
-            except (FileNotFoundError, KeyError) as e:
+                    print(f"  [{name}] Assembling features (mode={mode})...")
+                    if mode == "spherical":
+                        pts, raw = _assemble_features_spherical(cfg, name)
+                        transform = "spherical"
+                    else:
+                        pts, raw = _assemble_features_direct(cfg, name)
+                        transform = "none"
+            except (FileNotFoundError, KeyError, ValueError) as e:
                 print(f"  [{name}] {e}")
                 continue
 
-            print(f"  [{name}] Feature matrix: {pts.shape}")
+            on_sphere = transform in ("spherical", "unit_sphere")
+            print(f"  [{name}] Feature matrix: {pts.shape}  "
+                  f"(transform={transform}, on_sphere={on_sphere})")
 
             print(f"  [{name}] Microstate clustering ({micro_meth}, K_micro={K_micro})...")
             dtraj = _cluster_microstates(pts, micro_meth, K_micro)
@@ -350,6 +431,10 @@ def compute(cfg, universes):
             entry = {
                 "pts_xyz":      pts,
                 "raw":          raw,
+                "columns":      columns,
+                "meta":         meta,
+                "transform":    transform,
+                "on_sphere":    on_sphere,
                 "dtraj_micro":  dtraj,
                 "its_lags":     its_lags,
                 "its_ts":       its_ts,
@@ -359,13 +444,15 @@ def compute(cfg, universes):
 
             if lag > 0:
                 print(f"  [{name}] Fitting HMM (lag={lag})...")
-                hmm_result = _fit_hmm([dtraj], K, lag, nsamples, dt_time, pts)
+                hmm_result = _fit_hmm([dtraj], K, lag, nsamples, dt_time, pts,
+                                      on_sphere=on_sphere)
                 entry["hmm"] = hmm_result
             else:
                 print(f"  [{name}] lag=0, skipping HMM fit (ITS scan only).")
 
             results[name] = entry
 
+        save_per_system(results, outdir, ANALYSIS_KEY)
         return results
 
     return cached_compute(cache, _run, force_recompute=force)
@@ -373,9 +460,16 @@ def compute(cfg, universes):
 
 # ── Plotting functions ────────────────────────────────────────────────────────
 
-def _get_state_labels(cfg, K):
+def _resolve_params(cfg, stats_cfg=None):
+    """Pick the right param dict — stats_cfg takes priority when given."""
+    if stats_cfg is not None:
+        return get_stats_params(stats_cfg, ANALYSIS_KEY)
+    return get_analysis_params(cfg, ANALYSIS_KEY)
+
+
+def _get_state_labels(cfg, K, stats_cfg=None):
     """Return list of state label strings."""
-    params = get_analysis_params(cfg, ANALYSIS_KEY)
+    params = _resolve_params(cfg, stats_cfg)
     label_map = params.get("state_labels", {})
     # label_map can be {0: "OS1", ...} or null
     if label_map:
@@ -383,8 +477,8 @@ def _get_state_labels(cfg, K):
     return [f"S{i}" for i in range(K)]
 
 
-def _get_mfpt_order(cfg, K):
-    params = get_analysis_params(cfg, ANALYSIS_KEY)
+def _get_mfpt_order(cfg, K, stats_cfg=None):
+    params = _resolve_params(cfg, stats_cfg)
     order = params.get("mfpt_order")
     if order and len(order) == K:
         return list(order)
@@ -564,16 +658,29 @@ def _plot_flux_network(flux, T, labels, outpath, min_flux=1e-4):
 
 # ── Top-level plot ────────────────────────────────────────────────────────────
 
-def plot(cfg, results):
-    """Generate all kinetics diagnostic plots."""
+def plot(cfg, results_or_stats_cfg=None, results=None):
+    """Generate all kinetics diagnostic plots.
+
+    Supports two call signatures:
+      - ``plot(cfg, results)``             — main pipeline
+      - ``plot(cfg, stats_cfg, results)``  — stats pipeline
+    """
+    if results is None:
+        # Two-arg form: second positional is the results dict
+        results   = results_or_stats_cfg
+        stats_cfg = None
+    else:
+        stats_cfg = results_or_stats_cfg
+
     outdir = os.path.join(get_output_dir(cfg), ANALYSIS_KEY)
-    params = get_analysis_params(cfg, ANALYSIS_KEY)
 
     for name, data in results.items():
         K        = data["K"]
         dt_time  = data["dt_time"]
-        labels   = _get_state_labels(cfg, K)
-        prefix   = os.path.join(outdir, f"{name}_")
+        labels   = _get_state_labels(cfg, K, stats_cfg=stats_cfg)
+        sys_dir  = os.path.join(outdir, name)
+        os.makedirs(sys_dir, exist_ok=True)
+        prefix   = os.path.join(sys_dir, "")
 
         # ITS plot (always)
         _plot_its(data["its_lags"], data["its_ts"], dt_time, K,
@@ -583,7 +690,7 @@ def plot(cfg, results):
             continue
 
         hmm   = data["hmm"]
-        order = _get_mfpt_order(cfg, K)
+        order = _get_mfpt_order(cfg, K, stats_cfg=stats_cfg)
         T_ord = hmm["T_sorted"][order][:, order]
         pi_ord = hmm["pi_sorted"][order]
         mfpt_ord = hmm["mfpt_ns"][order][:, order]

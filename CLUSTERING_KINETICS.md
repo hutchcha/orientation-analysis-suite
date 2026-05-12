@@ -2,6 +2,8 @@
 
 Detailed documentation for the orientation-state clustering and HMM kinetics modules. These modules operate downstream of the `tilt_rotation` analysis and optionally the `inter_residue_distance` analysis.
 
+> **Two ways to run these modules.** The configuration shown throughout this document is for the **main pipeline** (`run-analysis config.yaml`), where parameters live under `analyses.analysis.<module>` in the main config and the data source is hardwired (clustering reads `tilt_rotation`; kinetics reads `tilt_rotation` + `inter_residue_distance`). The same modules can also be driven by the **stats pipeline** (`run-analysis config.yaml --stats stats.yaml`), which assembles arbitrary feature combinations through `core/features.py` — see the [`--stats` section in the README](README.md#statistical-analysis-pipeline---stats) and [`membrane_analysis/example_stats.yaml`](membrane_analysis/example_stats.yaml) for that path. The HMM/clustering parameters described below behave identically in both modes.
+
 ## Clustering (`analyses/clustering.py`)
 
 Clusters orientation states from tilt/rotation angle data using two methods: HDBSCAN (density-based) and K-means (centroid-based). Both operate on 3D Cartesian unit-vector embeddings so that the circular nature of rotation angles is handled correctly.

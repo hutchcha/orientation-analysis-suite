@@ -38,13 +38,13 @@ feature_sets:
     transform: unit_sphere
 
   # Full spherical embedding (tilt + rotation + inter-residue distance)
-  # orientation_3d:
-  #   features:
-  #     - tilt_rotation.rotation
-  #     - tilt_rotation.tilt
-  #     - inter_residue_distance
-  #   transform: spherical
-  #   radial_scale: 0.6
+  orientation_3d:
+    features:
+      - tilt_rotation.rotation
+      - tilt_rotation.tilt
+      - inter_residue_distance
+    transform: spherical
+    radial_scale: 0.6
 
   # Example: purely Euclidean features (no angular transform needed)
   # structural_2d:
@@ -80,30 +80,38 @@ clustering:
 # ─────────────────────────────────────────────────────────────────────────────
 # GMM — Gaussian Mixture Model
 # ─────────────────────────────────────────────────────────────────────────────
-# gmm:
-#   feature_set: orientation_3d
-#   n_components: [3, 4, 5, 6]        # BIC/AIC sweep over these values
-#   covariance_type: full              # full, tied, diag, or spherical
-#   random_state: 42
+gmm:
+  feature_set: orientation_3d
+  n_components: [3, 4, 5, 6]          # BIC/AIC sweep over these values
+  covariance_type: full                # full, tied, diag, or spherical
+  random_state: 42
+  best_criterion: bic                  # "bic" or "aic"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Kinetics — Bayesian HMM (pyemma)
 # ─────────────────────────────────────────────────────────────────────────────
-# kinetics:
-#   feature_set: orientation_3d
-#
-#   # Microstate discretisation
-#   microstate_source: internal        # "internal" (kmeans/gmm) or "gmm" (use gmm module output)
-#   micro_method: kmeans               # kmeans or gmm (when source=internal)
-#   K_micro: 300
-#
-#   # HMM parameters
-#   K: 4                              # number of hidden states
-#   lag: 0                            # 0 = ITS scan only; set > 0 to fit HMM
-#   max_lag: 5000
-#   dt_time: 0.1                      # ns per frame
-#   nsamples: 100
-#
-#   # Optional state labelling
-#   # state_labels: {0: "OS1", 1: "OS2", 2: "OS3", 3: "OS4"}
-#   # mfpt_order: [2, 1, 0, 3]
+# Outputs (per system, in results/kinetics/<system>/):
+#   its.png             — implied timescale scan
+#   T_matrix.png        — transition matrix heatmap
+#   mfpt.png            — mean first passage time matrix
+#   populations.png     — stationary state populations
+#   dwell_times.png     — mean dwell time per state
+#   ck_test.png         — Chapman-Kolmogorov validation
+#   flux_network.png    — directed flux network graph
+kinetics:
+  feature_set: orientation_3d
+
+  # Microstate discretisation (pre-HMM clustering)
+  micro_method: kmeans                # "kmeans" or "gmm"
+  K_micro: 300                        # number of microstates
+
+  # HMM parameters
+  K: 4                                # number of hidden (macro) states
+  lag: 500                            # 0 = ITS scan only; > 0 = fit HMM at this lag
+  max_lag: 5000                       # max lag for ITS scan
+  dt_time: 0.1                        # ns per frame
+  nsamples: 100                       # Bayesian HMM samples
+
+  # Optional state labelling for plots
+  # state_labels: {0: "OS1", 1: "OS2", 2: "OS3", 3: "OS4"}
+  # mfpt_order: [2, 1, 0, 3]          # custom ordering for MFPT/population plots
