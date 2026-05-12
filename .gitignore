@@ -32,6 +32,10 @@ membrane_analysis/results/
 *.tpr
 *.pdb
 
+# Exception: track initial system structures (small enough for git)
+!membrane_analysis/initial_systems/*.psf
+!membrane_analysis/initial_systems/*.pdb
+
 # MDAnalysis trajectory index caches
 *.npz
 
