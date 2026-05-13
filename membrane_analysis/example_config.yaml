@@ -130,6 +130,19 @@ systems:
   RhoA-GTP:
     topology: RhoA-GTP.psf
     trajectory: RhoA-GTP_stride20.xtc
+
+    # ── Optional: analysis_window ───────────────────────────────────────────
+    # Restrict every analysis to a sub-range of the trajectory (e.g. skip
+    # pre-equilibration).  Bounds are in microseconds of simulation time.
+    # Either bound can be null to mean "from the start" or "to the end".
+    # By default this applies to ALL analyses; equilibration plots can opt
+    # out either at the group level (analyses.equilibration.ignore_window)
+    # or per-analysis (analyses.equilibration.<key>.ignore_window).
+    #
+    # analysis_window:
+    #   start_us: 1.0          # skip first 1 us
+    #   stop_us:  null         # run to end of trajectory
+
     selections:
       rmsd: "protein and name CA and not (resid 25:42 58:78 120:140 178:191)"
       anchor: "resname CYSG and not (name CA HA C CB SG CT OT1 OT2 O H*)"
@@ -173,10 +186,18 @@ systems:
 # ─────────────────────────────────────────────────────────────────────────────
 analyses:
   equilibration:
+    # Group-level option: set to true to make every equilibration module
+    # ignore the per-system analysis_window and show the full trajectory
+    # (useful when you want to see the equilibration phase in the plots
+    # but trim it for downstream orientation/clustering analyses).
+    # ignore_window: true
+
     rmsd:
       enabled: true
       stride: 10
       ma_window: 50       # moving average window for plots
+      # Per-analysis override (takes precedence over group-level).
+      # ignore_window: true
     pp_distance:
       enabled: true
       stride: 10

@@ -106,11 +106,11 @@ def _assemble_features_spherical(cfg, name):
     params = get_analysis_params(cfg, ANALYSIS_KEY)
     outdir = get_output_dir(cfg)
 
+    from membrane_analysis.core.io import load_cache_data
     tr_cache = os.path.join(outdir, "tilt_rotation", "tilt_rotation.pkl")
     if not os.path.exists(tr_cache):
         raise FileNotFoundError(f"tilt_rotation cache not found: {tr_cache}")
-    with open(tr_cache, "rb") as f:
-        tr_data = pickle.load(f)
+    tr_data = load_cache_data(tr_cache)
 
     if name not in tr_data:
         raise KeyError(f"System '{name}' not in tilt_rotation cache.")
@@ -124,8 +124,7 @@ def _assemble_features_spherical(cfg, name):
             f"inter_residue_distance cache not found: {dist_cache}. "
             "Run inter_residue_distance first."
         )
-    with open(dist_cache, "rb") as f:
-        dist_data = pickle.load(f)
+    dist_data = load_cache_data(dist_cache)
 
     if name not in dist_data:
         raise KeyError(f"System '{name}' not in inter_residue_distance cache.")
@@ -377,9 +376,25 @@ def compute(cfg, universes_or_stats_cfg=None):
         stats_cfg = universes_or_stats_cfg
         params    = get_stats_params(stats_cfg, ANALYSIS_KEY)
         force     = True   # stats runs always recompute (feature_set may differ)
+        fs_name   = params.get("feature_set")
+        fs_cfg    = get_feature_set(stats_cfg, fs_name) if fs_name else None
+        metadata  = {
+            "analysis_key": ANALYSIS_KEY,
+            "mode":         "stats",
+            "feature_set":  {"name": fs_name,
+                             "cfg": dict(fs_cfg) if fs_cfg else None},
+            "params":       dict(params),
+            "system_names": list(get_system_names(cfg)),
+        }
     else:
         params = get_analysis_params(cfg, ANALYSIS_KEY)
         force  = is_force_recompute(cfg)
+        metadata = {
+            "analysis_key": ANALYSIS_KEY,
+            "mode":         "main",
+            "params":       dict(params),
+            "system_names": list(get_system_names(cfg)),
+        }
 
     def _run():
         micro_meth  = params.get("micro_method", "kmeans")
@@ -452,10 +467,10 @@ def compute(cfg, universes_or_stats_cfg=None):
 
             results[name] = entry
 
-        save_per_system(results, outdir, ANALYSIS_KEY)
+        save_per_system(results, outdir, ANALYSIS_KEY, metadata=metadata)
         return results
 
-    return cached_compute(cache, _run, force_recompute=force)
+    return cached_compute(cache, _run, force_recompute=force, metadata=metadata)
 
 
 # ── Plotting functions ────────────────────────────────────────────────────────

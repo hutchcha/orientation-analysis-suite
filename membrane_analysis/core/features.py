@@ -110,8 +110,8 @@ def _load_cached_array(output_dir, analysis_key, sub_key, system_name):
             f"Cache not found: {cache_file}. Run the '{analysis_key}' analysis first."
         )
 
-    with open(cache_file, "rb") as f:
-        data = pickle.load(f)
+    from membrane_analysis.core.io import load_cache_data
+    data = load_cache_data(cache_file)
 
     if system_name not in data:
         raise KeyError(

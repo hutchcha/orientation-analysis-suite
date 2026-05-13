@@ -43,7 +43,9 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 from math import atan2
 
-from membrane_analysis.core.io import cached_compute, save_per_system
+from membrane_analysis.core.io import (
+    cached_compute, save_per_system, load_cache_metadata, get_time_bounds,
+)
 from membrane_analysis.core.config import (
     get_output_dir, get_system_names, get_sim_length,
     is_force_recompute, get_analysis_params,
@@ -252,10 +254,24 @@ def compute(cfg, universes_or_stats_cfg=None):
         fs_cfg     = get_feature_set(stats_cfg, fs_name)
         hdb_params = params.get("hdbscan", {})
         km_params  = params.get("kmeans", {})
+        metadata   = {
+            "analysis_key": ANALYSIS_KEY,
+            "mode":         "stats",
+            "feature_set":  {"name": fs_name, "cfg": dict(fs_cfg)},
+            "hdbscan":      dict(hdb_params),
+            "kmeans":       dict(km_params),
+            "system_names": list(get_system_names(cfg)),
+        }
     else:
         params     = get_analysis_params(cfg, ANALYSIS_KEY)
         hdb_params = params.get("hdbscan", {})
         km_params  = params.get("kmeans", {})
+        metadata   = {
+            "analysis_key": ANALYSIS_KEY,
+            "mode":         "main",
+            "params":       dict(params),
+            "system_names": list(get_system_names(cfg)),
+        }
 
     force = is_force_recompute(cfg) if not is_stats else True
 
@@ -315,10 +331,10 @@ def compute(cfg, universes_or_stats_cfg=None):
                 "kmeans":  km_result,
             }
 
-        save_per_system(results, outdir, ANALYSIS_KEY)
+        save_per_system(results, outdir, ANALYSIS_KEY, metadata=metadata)
         return results
 
-    return cached_compute(cache, _run, force_recompute=force)
+    return cached_compute(cache, _run, force_recompute=force, metadata=metadata)
 
 
 def _load_tilt_rot(cfg, name):
@@ -326,13 +342,13 @@ def _load_tilt_rot(cfg, name):
 
     Returns (tilt, rot, valid_mask, full_length) or (None, None, None, None).
     """
+    from membrane_analysis.core.io import load_cache_data
     tr_cache = os.path.join(get_output_dir(cfg), "tilt_rotation", "tilt_rotation.pkl")
     if not os.path.exists(tr_cache):
         print(f"  [{name}] tilt_rotation cache not found.")
         return None, None, None, None
 
-    with open(tr_cache, "rb") as fh:
-        tr_data = pickle.load(fh)
+    tr_data = load_cache_data(tr_cache)
 
     if name not in tr_data:
         print(f"  [{name}] Not found in tilt_rotation cache.")
@@ -361,23 +377,26 @@ def plot(cfg, results_or_stats_cfg=None, results=None):
 
 def _plot_impl(cfg, results):
     """Generate clustering diagnostic plots for HDBSCAN and K-means per system."""
+    from membrane_analysis.core.io import load_cache_data
     outdir  = os.path.join(get_output_dir(cfg), ANALYSIS_KEY)
     sim_us  = get_sim_length(cfg)
 
-    # load the raw angles for plotting
+    # load the raw angles for plotting (using tilt_rotation's cached metadata
+    # for per-system time-axis bounds when available)
     tr_cache = os.path.join(get_output_dir(cfg), "tilt_rotation", "tilt_rotation.pkl")
     if not os.path.exists(tr_cache):
         print("  tilt_rotation cache missing — cannot generate clustering plots.")
         return
-    with open(tr_cache, "rb") as fh:
-        tr_data = pickle.load(fh)
+    tr_data = load_cache_data(tr_cache)
+    tr_meta = load_cache_metadata(tr_cache)
 
     for name, data in results.items():
         if name not in tr_data:
             continue
         tilt = tr_data[name]["tilt"]
         rot  = tr_data[name]["rotation"]
-        time = np.linspace(0, sim_us, len(tilt))
+        s_us, e_us = get_time_bounds(tr_meta, name, sim_us)
+        time = np.linspace(s_us, e_us, len(tilt))
 
         # ── HDBSCAN plots ────────────────────────────────────────────────
         hdb      = data["hdbscan"]

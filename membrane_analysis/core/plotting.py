@@ -93,7 +93,7 @@ def multi_system_figure(n_systems, sharex=True, sharey=True, ax_w=5, ax_h=4):
 # ── Overlay comparison plot ───────────────────────────────────────────────────
 
 def overlay_line_plot(results_dict, sim_us, ylabel, outpath, ma_window=50,
-                      ax_w=8, ax_h=4):
+                      ax_w=8, ax_h=4, time_bounds=None):
     """All systems overlaid on a single axes with unique colors.
 
     Each system's raw trace is drawn at low alpha; the moving average carries
@@ -102,10 +102,17 @@ def overlay_line_plot(results_dict, sim_us, ylabel, outpath, ma_window=50,
     Parameters
     ----------
     results_dict : dict {name: 1D array}
-    sim_us : float  — total simulation length in microseconds
+    sim_us : float  — fallback simulation length in microseconds for any
+             system without per-system bounds.
     ylabel : str
     outpath : str
     ma_window : int
+    time_bounds : dict {name: (start_us, end_us)} or None
+                  Per-system time-axis bounds.  When provided, each system's
+                  trace is drawn against its own analysed window so windows
+                  that start at different times line up correctly in
+                  absolute simulation time.  Falls back to (0, sim_us) for
+                  any missing system.
     """
     if len(results_dict) < 2:
         return
@@ -114,7 +121,11 @@ def overlay_line_plot(results_dict, sim_us, ylabel, outpath, ma_window=50,
     for i, (name, arr) in enumerate(results_dict.items()):
         color   = COMPARISON_COLORS[i % len(COMPARISON_COLORS)]
         arr     = np.asarray(arr, dtype=float)
-        xvalues = np.linspace(0, sim_us, len(arr))
+        if time_bounds is not None and name in time_bounds:
+            s_us, e_us = time_bounds[name]
+        else:
+            s_us, e_us = 0.0, float(sim_us)
+        xvalues = np.linspace(s_us, e_us, len(arr))
         mov_avg = pd.Series(arr).rolling(window=ma_window, center=True).mean()
         ax.plot(xvalues, arr,            alpha=0.15, color=color, zorder=1)
         ax.plot(xvalues, mov_avg.values, alpha=1.0,  color=color, zorder=2,

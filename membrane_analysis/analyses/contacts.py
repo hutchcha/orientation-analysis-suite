@@ -32,10 +32,11 @@ import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 from MDAnalysis.lib.distances import capped_distance
 
-from membrane_analysis.core.io import cached_compute
+from membrane_analysis.core.io import cached_compute, save_per_system
 from membrane_analysis.core.config import (
     get_output_dir, get_system_names, get_system, get_selection,
     get_stride, is_force_recompute, get_analysis_params,
+    get_frame_window_for_analysis, build_cache_metadata,
 )
 from membrane_analysis.core.plotting import style_axes, save_figure
 
@@ -93,18 +94,19 @@ def _chunk_contact_counts(args):
 # ── Per-system RCF computation ────────────────────────────────────────────────
 
 def _compute_one(u0, top, traj, prot_sel, lipid_sel,
-                 stride, cutoff, n_jobs, chunk_size):
-    """Return RCF DataFrame for one trajectory."""
+                 start, stop, stride, cutoff, n_jobs, chunk_size):
+    """Return RCF DataFrame for one trajectory windowed to [start:stop:stride]."""
     prot0    = u0.select_atoms(prot_sel)
     meta     = {
         int(r.resid): (r.resname, f"{r.resname}-{int(r.resid)}")
         for r in prot0.residues
     }
 
-    all_frames = np.arange(0, u0.trajectory.n_frames, stride, dtype=np.int64)
+    all_frames = np.arange(start, stop, stride, dtype=np.int64)
     if all_frames.size == 0:
         raise ValueError(
-            f"No frames selected (n_frames={u0.trajectory.n_frames}, stride={stride})."
+            f"No frames selected (window={start}:{stop}, stride={stride}, "
+            f"n_frames={u0.trajectory.n_frames})."
         )
 
     chunks    = [all_frames[i:i + chunk_size]
@@ -154,6 +156,7 @@ def compute(cfg, universes):
     chunk_size = int(params.get("chunk_size", 200))
     n_jobs_cfg = params.get("n_jobs", -1)
     n_jobs     = max(1, cpu_count() - 1) if n_jobs_cfg == -1 else max(1, int(n_jobs_cfg))
+    metadata   = build_cache_metadata(cfg, universes, ANALYSIS_KEY)
 
     def _run():
         results = {}
@@ -167,15 +170,18 @@ def compute(cfg, universes):
             top  = sys_cfg["topology"]
             traj = sys_cfg["trajectory"]
             stride = get_stride(cfg, name, ANALYSIS_KEY)
+            start, stop = get_frame_window_for_analysis(
+                cfg, name, universes[name], ANALYSIS_KEY)
             print(f"  [{name}] Computing RCF "
-                  f"(stride={stride}, cutoff={cutoff}A, n_jobs={n_jobs})...")
+                  f"(frames {start}:{stop}:{stride}, cutoff={cutoff}A, n_jobs={n_jobs})...")
             results[name] = _compute_one(
                 universes[name], top, traj,
-                prot_sel, lipid_sel, stride, cutoff, n_jobs, chunk_size,
+                prot_sel, lipid_sel, start, stop, stride, cutoff, n_jobs, chunk_size,
             )
+        save_per_system(results, outdir, ANALYSIS_KEY, metadata=metadata)
         return results
 
-    return cached_compute(cache, _run, force_recompute=force)
+    return cached_compute(cache, _run, force_recompute=force, metadata=metadata)
 
 
 # ── Plotting helpers ──────────────────────────────────────────────────────────

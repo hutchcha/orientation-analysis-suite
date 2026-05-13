@@ -115,6 +115,34 @@ Every analysis module follows the same contract:
 - `--plot-only` skips trajectory loading entirely and regenerates plots from cache.
 - `--recompute <key>` forces specific analyses to re-run.
 
+Caches embed an `_metadata` block capturing the window, stride, selections, and analysis parameters used to produce them. On load, the metadata is compared against the current config — any mismatch triggers automatic recomputation, and a diff of what changed is printed. Legacy caches without metadata are still loaded transparently.
+
+### Analysis windows (skip pre-equilibration)
+
+Each system can restrict analyses to a sub-range of the trajectory in microseconds:
+
+```yaml
+systems:
+  RhoA-GTP:
+    topology: ...
+    trajectory: ...
+    analysis_window:
+      start_us: 1.0       # skip first 1 us (pre-equilibration)
+      stop_us:  null      # null = run to end of trajectory
+```
+
+By default the window applies to every analysis. Two override mechanisms let you keep equilibration plots showing the full trajectory while orientation/clustering use only equilibrated frames:
+
+```yaml
+analyses:
+  equilibration:
+    ignore_window: true     # group-level: every equilibration module ignores the window
+    rmsd:
+      ignore_window: false  # per-analysis: opt this one back into the window
+```
+
+Per-analysis settings take precedence over group-level. Time axes in plots are built from per-system metadata, so the x-axis shows actual simulation time (e.g. 1.0 → 19.0 µs) rather than relative time within the window.
+
 ## Modules
 
 ### Equilibration

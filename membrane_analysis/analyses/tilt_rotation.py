@@ -54,10 +54,14 @@ from scipy.ndimage import gaussian_filter
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
-from membrane_analysis.core.io import cached_compute, save_txt, save_per_system
+from membrane_analysis.core.io import (
+    cached_compute, save_txt, save_per_system,
+    load_cache_metadata, get_time_bounds,
+)
 from membrane_analysis.core.config import (
     get_output_dir, get_system_names, get_selection,
     get_stride, get_sim_length, is_force_recompute, get_analysis_params,
+    get_frame_window_for_analysis, build_cache_metadata,
 )
 from membrane_analysis.core.plotting import (
     line_plot, style_axes, save_figure, multi_system_figure, overlay_line_plot,
@@ -123,8 +127,9 @@ def estimate_membrane_normal(u, phosphorus_sel):
 
 # ── Core angle computation ────────────────────────────────────────────────────
 
-def compute_angles(u, start_sel, end_sel, ref_sel, normal, stride=1):
-    """Compute per-frame tilt and rotation angles.
+def compute_angles(u, start_sel, end_sel, ref_sel, normal,
+                   start=0, stop=None, stride=1):
+    """Compute per-frame tilt and rotation angles over a frame window.
 
     Tilt (theta_t)
         Angle between the helix axis unit vector (z') and the membrane
@@ -150,12 +155,16 @@ def compute_angles(u, start_sel, end_sel, ref_sel, normal, stride=1):
     end_sel : str     — N-terminal anchor of the helix axis
     ref_sel : str     — rotation pointer group (e.g. H2/switch-II)
     normal : (3,) ndarray — membrane normal unit vector
+    start, stop : int    — frame slice (stop exclusive)
     stride : int
 
     Returns
     -------
     tilt_deg, rotation_deg : (N,) ndarray
     """
+    if stop is None:
+        stop = int(u.trajectory.n_frames)
+
     start_ag = u.select_atoms(start_sel)
     end_ag   = u.select_atoms(end_sel)
     ref_ag   = u.select_atoms(ref_sel)
@@ -164,7 +173,7 @@ def compute_angles(u, start_sel, end_sel, ref_sel, normal, stride=1):
     axis_vectors = []
     tilts = []
 
-    for _ts in tqdm(u.trajectory[::stride], desc="  tilt"):
+    for _ts in tqdm(u.trajectory[start:stop:stride], desc="  tilt"):
         com_start = start_ag.center_of_mass()
         com_end   = end_ag.center_of_mass()
         v = com_end - com_start
@@ -181,14 +190,16 @@ def compute_angles(u, start_sel, end_sel, ref_sel, normal, stride=1):
     tilts        = np.array(tilts)
     axis_vectors = np.array(axis_vectors)  # shape (N, 3), raw (un-normalised)
 
-    # Auto-flip: if frame-0 axis is antiparallel to the normal, reverse convention
+    # Auto-flip: if first analysed frame's axis is antiparallel to the normal,
+    # reverse convention.
     v0 = axis_vectors[0]
     if np.isfinite(v0).all() and np.dot(v0, normal) < 0:
         axis_vectors = -axis_vectors
         tilts = 180.0 - tilts
         start_sel, end_sel = end_sel, start_sel
         start_ag, end_ag = end_ag, start_ag
-        print("    Axis auto-flipped: frame-0 vector was antiparallel to normal.")
+        print("    Axis auto-flipped: first analysed frame's vector was "
+              "antiparallel to normal.")
 
     # ── Pass 2: rotation ─────────────────────────────────────────────────────
     # Reference vector = membrane normal (projected onto each frame's
@@ -196,7 +207,8 @@ def compute_angles(u, start_sel, end_sel, ref_sel, normal, stride=1):
     # reference and is well-defined for any tilt angle.
     rots = []
 
-    for f_idx, _ts in enumerate(tqdm(u.trajectory[::stride], desc="  rotation")):
+    for f_idx, _ts in enumerate(tqdm(u.trajectory[start:stop:stride],
+                                     desc="  rotation")):
         a5vec = axis_vectors[f_idx]
         if not np.isfinite(a5vec).all():
             rots.append(np.nan)
@@ -241,6 +253,7 @@ def compute(cfg, universes):
     outdir = os.path.join(get_output_dir(cfg), ANALYSIS_KEY)
     cache  = os.path.join(outdir, "tilt_rotation.pkl")
     force  = is_force_recompute(cfg)
+    metadata = build_cache_metadata(cfg, universes, ANALYSIS_KEY)
 
     def _run():
         results = {}
@@ -274,9 +287,12 @@ def compute(cfg, universes):
                       f"({normal[0]:.3f}, {normal[1]:.3f}, {normal[2]:.3f})")
 
             stride = get_stride(cfg, name, ANALYSIS_KEY)
-            print(f"  [{name}] Computing tilt/rotation (stride={stride})...")
+            start, stop = get_frame_window_for_analysis(cfg, name, u, ANALYSIS_KEY)
+            print(f"  [{name}] Computing tilt/rotation "
+                  f"(frames {start}:{stop}:{stride})...")
             tilt, rot = compute_angles(
-                u, start_sel, end_sel, ref_sel, normal, stride
+                u, start_sel, end_sel, ref_sel, normal,
+                start=start, stop=stop, stride=stride,
             )
 
             save_txt(tilt, os.path.join(outdir, f"{name}_tilt.txt"))
@@ -287,10 +303,10 @@ def compute(cfg, universes):
                 "rotation":         rot,
                 "membrane_normal":  normal,
             }
-        save_per_system(results, outdir, ANALYSIS_KEY)
+        save_per_system(results, outdir, ANALYSIS_KEY, metadata=metadata)
         return results
 
-    return cached_compute(cache, _run, force_recompute=force)
+    return cached_compute(cache, _run, force_recompute=force, metadata=metadata)
 
 
 # ── Polar density plot ────────────────────────────────────────────────────────
@@ -355,10 +371,13 @@ def polar_density_plot(rot_deg, tilt_deg, ax,
 def plot(cfg, results):
     """Plot polar density and tilt/rotation time series. Multi-system: shared axes."""
     outdir = os.path.join(get_output_dir(cfg), ANALYSIS_KEY)
+    cache  = os.path.join(outdir, "tilt_rotation.pkl")
     sim_us = get_sim_length(cfg)
     params = get_analysis_params(cfg, ANALYSIS_KEY)
     ma     = params.get("ma_window", 500)
     names  = list(results.keys())
+    meta   = load_cache_metadata(cache)
+    time_bounds = {n: get_time_bounds(meta, n, sim_us) for n in names}
 
     # ── polar density: one panel per system in a grid ─────────────────────────
     import math
@@ -380,7 +399,8 @@ def plot(cfg, results):
     # ── tilt time series ───────────────────────────────────────────────────────
     fig_t, axes_t = multi_system_figure(len(names), sharex=True, sharey=True)
     for ax, name in zip(axes_t, names):
-        time = np.linspace(0, sim_us, len(results[name]["tilt"]))
+        s_us, e_us = time_bounds[name]
+        time = np.linspace(s_us, e_us, len(results[name]["tilt"]))
         line_plot(time, results[name]["tilt"], ax, title=name,
                   color="black", z=1, ma_window=ma, ma_color="red", ma_z=2)
     fig_t.supxlabel("Time (μs)", fontsize=20)
@@ -390,7 +410,8 @@ def plot(cfg, results):
     # ── rotation time series ───────────────────────────────────────────────────
     fig_r, axes_r = multi_system_figure(len(names), sharex=True, sharey=True)
     for ax, name in zip(axes_r, names):
-        time = np.linspace(0, sim_us, len(results[name]["rotation"]))
+        s_us, e_us = time_bounds[name]
+        time = np.linspace(s_us, e_us, len(results[name]["rotation"]))
         line_plot(time, results[name]["rotation"], ax, title=name,
                   color="black", z=1, ma_window=ma, ma_color="red", ma_z=2)
     fig_r.supxlabel("Time (μs)", fontsize=20)
@@ -399,12 +420,17 @@ def plot(cfg, results):
 
     # ── comparison overlays ────────────────────────────────────────────────────
     overlay_line_plot({n: results[n]["tilt"]     for n in names}, sim_us,
-                      "Tilt (°)",     os.path.join(outdir, "tilt_comparison.png"),     ma_window=ma)
+                      "Tilt (°)",
+                      os.path.join(outdir, "tilt_comparison.png"),
+                      ma_window=ma, time_bounds=time_bounds)
     overlay_line_plot({n: results[n]["rotation"] for n in names}, sim_us,
-                      "Rotation (°)", os.path.join(outdir, "rotation_comparison.png"), ma_window=ma)
+                      "Rotation (°)",
+                      os.path.join(outdir, "rotation_comparison.png"),
+                      ma_window=ma, time_bounds=time_bounds)
 
     # Per-system individual plots
     for name in names:
+        s_us, e_us = time_bounds[name]
         # Polar density
         fig_p, ax_p = plt.subplots(figsize=(5, 5),
                                    subplot_kw={"projection": "polar"},
@@ -415,7 +441,7 @@ def plot(cfg, results):
 
         # Tilt time series
         fig_t_s, ax_t_s = plt.subplots(figsize=(5, 4), constrained_layout=True)
-        time = np.linspace(0, sim_us, len(results[name]["tilt"]))
+        time = np.linspace(s_us, e_us, len(results[name]["tilt"]))
         line_plot(time, results[name]["tilt"], ax_t_s, title=name,
                   color="black", z=1, ma_window=ma, ma_color="red", ma_z=2)
         ax_t_s.set_xlabel("Time (μs)", fontsize=14)
@@ -424,7 +450,7 @@ def plot(cfg, results):
 
         # Rotation time series
         fig_r_s, ax_r_s = plt.subplots(figsize=(5, 4), constrained_layout=True)
-        time = np.linspace(0, sim_us, len(results[name]["rotation"]))
+        time = np.linspace(s_us, e_us, len(results[name]["rotation"]))
         line_plot(time, results[name]["rotation"], ax_r_s, title=name,
                   color="black", z=1, ma_window=ma, ma_color="red", ma_z=2)
         ax_r_s.set_xlabel("Time (μs)", fontsize=14)

@@ -28,10 +28,13 @@ import os
 import numpy as np
 import pandas as pd
 
-from membrane_analysis.core.io import cached_compute, save_per_system
+from membrane_analysis.core.io import (
+    cached_compute, save_per_system, load_cache_metadata, get_time_bounds,
+)
 from membrane_analysis.core.config import (
     get_output_dir, get_system_names, get_system, get_selection,
     get_stride, get_sim_length, is_force_recompute, get_analysis_params,
+    get_frame_window_for_analysis, build_cache_metadata,
 )
 from membrane_analysis.core.plotting import line_plot, save_figure, multi_system_figure
 import matplotlib.pyplot as plt
@@ -49,15 +52,18 @@ LIPID_COLORS = {
 
 # ── Leaflet assignment ────────────────────────────────────────────────────────
 
-def _assign_leaflets_static(u, apl_sel, n_frames):
-    """Assign leaflets based on frame-0 midplane; return (n_lipids, n_frames) array.
+def _assign_leaflets_static(u, apl_sel, n_frames, ref_frame=0):
+    """Assign leaflets based on the midplane at *ref_frame*.
 
-    Upper leaflet (+1): head atom z > midplane at frame 0.
-    Lower leaflet (-1): head atom z < midplane at frame 0.
+    Upper leaflet (+1): head atom z > midplane at *ref_frame*.
+    Lower leaflet (-1): head atom z < midplane at *ref_frame*.
 
     The assignment is static because these simulations have no flip-flop.
+    When an analysis_window skips early simulation time, *ref_frame* should
+    be the first analysed frame so leaflets are defined from equilibrated
+    structure.
     """
-    u.trajectory[0]
+    u.trajectory[ref_frame]
     membrane = u.select_atoms(apl_sel)
 
     # one representative atom per residue (the head atom, first atom in the
@@ -82,9 +88,9 @@ def _resid_row_map(u, apl_sel):
 
 # ── Core computation ──────────────────────────────────────────────────────────
 
-def _compute_one(u, apl_sel, lipid_headgroups, stride):
+def _compute_one(u, apl_sel, lipid_headgroups, start, stop, stride):
     """
-    Compute APL for one universe.
+    Compute APL for one universe over a frame window.
 
     Returns a DataFrame: rows = sampled frames, columns = Total + per-lipid
     + Upper/Lower POPC (when POPC is present).  Values are mean APL (Å²).
@@ -93,13 +99,12 @@ def _compute_one(u, apl_sel, lipid_headgroups, stride):
     """
     from lipyphilic.analysis.area_per_lipid import AreaPerLipid
 
-    # count strided frames
-    n_frames_total = len(u.trajectory)
-    n_frames = len(range(0, n_frames_total, stride))
+    # count strided frames in the window
+    n_frames = len(range(start, stop, stride))
 
-    # custom static leaflet assignment
-    print(f"    Assigning leaflets (static, frame-0 midplane)...")
-    leaflets = _assign_leaflets_static(u, apl_sel, n_frames)
+    # custom static leaflet assignment from the first analysed frame
+    print(f"    Assigning leaflets (static, frame-{start} midplane)...")
+    leaflets = _assign_leaflets_static(u, apl_sel, n_frames, ref_frame=start)
     n_upper = int((leaflets[:, 0] == 1).sum())
     n_lower = int((leaflets[:, 0] == -1).sum())
     print(f"    Upper: {n_upper} lipids,  Lower: {n_lower} lipids")
@@ -107,7 +112,7 @@ def _compute_one(u, apl_sel, lipid_headgroups, stride):
     # APL calculation
     print(f"    Running AreaPerLipid...")
     areas = AreaPerLipid(universe=u, lipid_sel=apl_sel, leaflets=leaflets)
-    areas.run(step=stride, verbose=True)
+    areas.run(start=start, stop=stop, step=stride, verbose=True)
 
     # shape: (n_lipids, n_frames)
     arr = areas.areas
@@ -156,6 +161,7 @@ def compute(cfg, universes):
     outdir = os.path.join(get_output_dir(cfg), ANALYSIS_KEY)
     cache  = os.path.join(outdir, "apl.pkl")
     force  = is_force_recompute(cfg)
+    metadata = build_cache_metadata(cfg, universes, ANALYSIS_KEY)
 
     def _run():
         results = {}
@@ -172,20 +178,26 @@ def compute(cfg, universes):
                 continue
 
             stride = get_stride(cfg, name, ANALYSIS_KEY)
-            print(f"  [{name}] Computing APL (stride={stride})...")
-            results[name] = _compute_one(universes[name], apl_sel, lipid_hg, stride)
-        save_per_system(results, outdir, ANALYSIS_KEY)
+            start, stop = get_frame_window_for_analysis(
+                cfg, name, universes[name], ANALYSIS_KEY)
+            print(f"  [{name}] Computing APL "
+                  f"(frames {start}:{stop}:{stride})...")
+            results[name] = _compute_one(
+                universes[name], apl_sel, lipid_hg, start, stop, stride)
+        save_per_system(results, outdir, ANALYSIS_KEY, metadata=metadata)
         return results
 
-    return cached_compute(cache, _run, force_recompute=force)
+    return cached_compute(cache, _run, force_recompute=force, metadata=metadata)
 
 
 def plot(cfg, results):
     """Plot APL per lipid type. Multi-system: shared-axes grid, one panel per system."""
     outdir    = os.path.join(get_output_dir(cfg), ANALYSIS_KEY)
+    cache     = os.path.join(outdir, "apl.pkl")
     sim_us    = get_sim_length(cfg)
     ma        = get_analysis_params(cfg, ANALYSIS_KEY).get("ma_window", 500)
     names     = list(results.keys())
+    meta      = load_cache_metadata(cache)
     plot_cols = ["Total", "POPC", "POPE", "POPS", "PLA18", "PSM", "SAPI",
                  "CHL1", "Upper POPC", "Lower POPC"]
 
@@ -193,7 +205,8 @@ def plot(cfg, results):
                                     ax_w=7, ax_h=4)
     for ax, name in zip(axes, names):
         df   = results[name]
-        time = np.linspace(0, sim_us, len(df))
+        s_us, e_us = get_time_bounds(meta, name, sim_us)
+        time = np.linspace(s_us, e_us, len(df))
         for col in plot_cols:
             if col not in df.columns:
                 continue
@@ -209,7 +222,8 @@ def plot(cfg, results):
     # Per-system individual plots
     for name in names:
         df   = results[name]
-        time = np.linspace(0, sim_us, len(df))
+        s_us, e_us = get_time_bounds(meta, name, sim_us)
+        time = np.linspace(s_us, e_us, len(df))
         fig_s, ax_s = plt.subplots(figsize=(5, 4), constrained_layout=True)
         for col in plot_cols:
             if col not in df.columns:

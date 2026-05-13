@@ -17,10 +17,11 @@ import os
 import numpy as np
 from tqdm import tqdm
 
-from membrane_analysis.core.io import cached_compute
+from membrane_analysis.core.io import cached_compute, save_per_system
 from membrane_analysis.core.config import (
     get_output_dir, get_system_names, get_selection, get_system,
     get_stride, get_sim_length, is_force_recompute, get_analysis_params,
+    get_frame_window_for_analysis, build_cache_metadata,
 )
 from membrane_analysis.core.plotting import line_plot, style_axes, save_figure
 import matplotlib.pyplot as plt
@@ -39,9 +40,11 @@ def _lipid_present(u, resname):
     return u.select_atoms(f"resname {resname}").n_atoms > 0
 
 
-def _frames_and_time(u, stride=1):
-    """Return (frame_indices, time_in_us) arrays."""
-    frames = np.arange(0, len(u.trajectory), stride, dtype=int)
+def _frames_and_time(u, start=0, stop=None, stride=1):
+    """Return (frame_indices, time_in_us) arrays for the [start:stop:stride] window."""
+    if stop is None:
+        stop = len(u.trajectory)
+    frames = np.arange(start, stop, stride, dtype=int)
     dt_ps = getattr(u.trajectory, "dt", None)
 
     u.trajectory[frames[0]]
@@ -61,23 +64,28 @@ def _frames_and_time(u, stride=1):
 
 
 def _aligned_roi_rmsd(u, roi_sel, align_sel="protein and backbone",
-                      ref_frame=0, stride=1):
-    """Compute RMSD of a ROI after backbone alignment. Returns (time_us, rmsd_Å)."""
+                      start=0, stop=None, stride=1):
+    """Compute RMSD of a ROI after backbone alignment over [start:stop:stride]."""
+    if stop is None:
+        stop = int(u.trajectory.n_frames)
     r = RMSD(u, u, select=align_sel, groupselections=[roi_sel],
-             ref_frame=ref_frame)
-    r.run(step=stride, verbose=True)
+             ref_frame=start)
+    r.run(start=start, stop=stop, step=stride, verbose=True)
     arr = r.results.rmsd
     time_us = arr[:, 1] / 1e6  # ps → µs
     roi_rmsd = arr[:, 3]       # first groupselection
     return time_us, roi_rmsd
 
 
-def _hbond_counts(u, between_groups, acceptor_lipids, stride=1):
+def _hbond_counts(u, between_groups, acceptor_lipids,
+                  start=0, stop=None, stride=1):
     """
-    Run HBA and return per-frame total counts + per-lipid counts.
+    Run HBA and return per-frame total counts + per-lipid counts over [start:stop:stride].
     If between_groups is None, uses guess_hydrogens mode.
     """
-    frames, t_us = _frames_and_time(u, stride)
+    if stop is None:
+        stop = len(u.trajectory)
+    frames, t_us = _frames_and_time(u, start=start, stop=stop, stride=stride)
     n = len(frames)
 
     # figure out which lipids are actually in the system
@@ -100,7 +108,7 @@ def _hbond_counts(u, between_groups, acceptor_lipids, stride=1):
         h.guess_hydrogens("protein")
         h.guess_acceptors(f"({lipid_union}) and {LIPID_ACCEPTOR_ATOMS}")
 
-    h.run(step=stride, verbose=True)
+    h.run(start=start, stop=stop, step=stride, verbose=True)
 
     hb = h.results.hbonds
     total_counts = np.zeros(n, dtype=int)
@@ -127,7 +135,7 @@ def _hbond_counts(u, between_groups, acceptor_lipids, stride=1):
             h_lip.guess_hydrogens("protein")
             h_lip.guess_acceptors(f"resname {r} and {LIPID_ACCEPTOR_ATOMS}")
 
-        h_lip.run(step=stride, verbose=True)
+        h_lip.run(start=start, stop=stop, step=stride, verbose=True)
         hb_lip = h_lip.results.hbonds
         counts = np.zeros(n, dtype=int)
         if hb_lip is not None and len(hb_lip) > 0:
@@ -143,22 +151,27 @@ def _hbond_counts(u, between_groups, acceptor_lipids, stride=1):
 def compute(cfg, universes):
     """Compute anchor RMSD + H-bonds for all systems."""
     outdir = os.path.join(get_output_dir(cfg), ANALYSIS_KEY)
-    cache = os.path.join(outdir, "hbonds_rmsd.pkl")
-    force = is_force_recompute(cfg)
+    cache  = os.path.join(outdir, "hbonds_rmsd.pkl")
+    force  = is_force_recompute(cfg)
+    metadata = build_cache_metadata(cfg, universes, ANALYSIS_KEY)
 
     def _run():
         results = {"rmsd": {}, "hbonds": {}}
         for name in get_system_names(cfg):
             sys_cfg = get_system(cfg, name)
             stride = get_stride(cfg, name, ANALYSIS_KEY)
+            start, stop = get_frame_window_for_analysis(
+                cfg, name, universes[name], ANALYSIS_KEY)
 
             # anchor RMSD
             anchor_sel = get_selection(cfg, name, "anchor_rmsd")
             align_sel = get_selection(cfg, name, "align") or "protein and backbone"
             if anchor_sel:
-                print(f"  [{name}] Anchor RMSD (stride={stride})...")
+                print(f"  [{name}] Anchor RMSD "
+                      f"(frames {start}:{stop}:{stride})...")
                 t_us, rmsd_A = _aligned_roi_rmsd(
-                    universes[name], anchor_sel, align_sel, stride=stride
+                    universes[name], anchor_sel, align_sel,
+                    start=start, stop=stop, stride=stride,
                 )
                 results["rmsd"][name] = {"time_us": t_us, "rmsd_A": rmsd_A}
 
@@ -169,17 +182,27 @@ def compute(cfg, universes):
             between = hb_cfg.get("between")  # explicit between list
 
             if acc_lipids or between:
-                print(f"  [{name}] H-bonds (stride={stride})...")
+                print(f"  [{name}] H-bonds "
+                      f"(frames {start}:{stop}:{stride})...")
                 hb = _hbond_counts(
-                    universes[name], between, acc_lipids, stride=stride
+                    universes[name], between, acc_lipids,
+                    start=start, stop=stop, stride=stride,
                 )
                 results["hbonds"][name] = hb
             else:
                 print(f"  [{name}] No acceptor_lipids or between specified, skipping H-bonds.")
 
+        # Write per-system files (rmsd + hbonds combined under one key per system)
+        per_system_payload = {}
+        for name in set(results["rmsd"]) | set(results["hbonds"]):
+            per_system_payload[name] = {
+                "rmsd":   results["rmsd"].get(name),
+                "hbonds": results["hbonds"].get(name),
+            }
+        save_per_system(per_system_payload, outdir, ANALYSIS_KEY, metadata=metadata)
         return results
 
-    return cached_compute(cache, _run, force_recompute=force)
+    return cached_compute(cache, _run, force_recompute=force, metadata=metadata)
 
 
 # ─── Lipid colors for H-bond plots ───────────────────────────────────────────

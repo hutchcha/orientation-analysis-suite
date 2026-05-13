@@ -16,10 +16,13 @@ import pandas as pd
 from tqdm import tqdm
 from scipy.stats import gaussian_kde
 
-from membrane_analysis.core.io import cached_compute, save_per_system
+from membrane_analysis.core.io import (
+    cached_compute, save_per_system, load_cache_metadata, get_time_bounds,
+)
 from membrane_analysis.core.config import (
     get_output_dir, get_system_names, get_selection, get_system,
     get_stride, get_sim_length, is_force_recompute, get_analysis_params,
+    get_frame_window_for_analysis, build_cache_metadata,
 )
 from membrane_analysis.core.plotting import line_plot, style_axes, save_figure, multi_system_figure
 import matplotlib.pyplot as plt
@@ -32,10 +35,10 @@ OUTPUT_FIELDS = {"Lobe1": "scalar", "Lobe2": "scalar"}
 DEFAULT_MEM_SEL = "resname POPC POPE SAPI CHL1 and name C*"
 
 
-def _compute_one(u, lobe1_sel, lobe2_sel, mem_sel, stride):
+def _compute_one(u, lobe1_sel, lobe2_sel, mem_sel, start, stop, stride):
     """Return DataFrame with Lobe1 and Lobe2 Z-distances per frame."""
     d1, d2 = [], []
-    for ts in tqdm(u.trajectory[::stride]):
+    for ts in tqdm(u.trajectory[start:stop:stride]):
         lobe1 = u.select_atoms(f"protein and {lobe1_sel}")
         lobe2 = u.select_atoms(f"protein and {lobe2_sel}")
         memcen = u.select_atoms(mem_sel)
@@ -49,8 +52,9 @@ def _compute_one(u, lobe1_sel, lobe2_sel, mem_sel, stride):
 def compute(cfg, universes):
     """Compute lobe COM distances for all systems. Returns dict {name: DataFrame}."""
     outdir = os.path.join(get_output_dir(cfg), ANALYSIS_KEY)
-    cache = os.path.join(outdir, "lobe_com.pkl")
-    force = is_force_recompute(cfg)
+    cache  = os.path.join(outdir, "lobe_com.pkl")
+    force  = is_force_recompute(cfg)
+    metadata = build_cache_metadata(cfg, universes, ANALYSIS_KEY)
 
     def _run():
         results = {}
@@ -62,27 +66,34 @@ def compute(cfg, universes):
                 continue
             mem_sel = get_selection(cfg, name, "membrane_com") or DEFAULT_MEM_SEL
             stride = get_stride(cfg, name, ANALYSIS_KEY)
-            print(f"  [{name}] Computing lobe COM distances (stride={stride})...")
-            results[name] = _compute_one(universes[name], l1, l2, mem_sel, stride)
-        save_per_system(results, outdir, ANALYSIS_KEY)
+            start, stop = get_frame_window_for_analysis(
+                cfg, name, universes[name], ANALYSIS_KEY)
+            print(f"  [{name}] Computing lobe COM distances "
+                  f"(frames {start}:{stop}:{stride})...")
+            results[name] = _compute_one(
+                universes[name], l1, l2, mem_sel, start, stop, stride)
+        save_per_system(results, outdir, ANALYSIS_KEY, metadata=metadata)
         return results
 
-    return cached_compute(cache, _run, force_recompute=force)
+    return cached_compute(cache, _run, force_recompute=force, metadata=metadata)
 
 
 def plot(cfg, results):
     """Plot lobe COM time series and 2D KDE contours. Multi-system: shared axes."""
     outdir = os.path.join(get_output_dir(cfg), ANALYSIS_KEY)
+    cache  = os.path.join(outdir, "lobe_com.pkl")
     sim_us = get_sim_length(cfg)
     ma     = get_analysis_params(cfg, ANALYSIS_KEY).get("ma_window", 200)
     names  = list(results.keys())
+    meta   = load_cache_metadata(cache)
 
     # ── time series: one panel per system, shared axes ────────────────────────
     fig, axes = multi_system_figure(len(names), sharex=True, sharey=True,
                                     ax_w=7, ax_h=4)
     for ax, name in zip(axes, names):
         df   = results[name]
-        time = np.linspace(0, sim_us, len(df))
+        s_us, e_us = get_time_bounds(meta, name, sim_us)
+        time = np.linspace(s_us, e_us, len(df))
         line_plot(time, df["Lobe1"].values, ax, title=name,
                   color="orange", z=1, label="Lobe1",
                   ma_window=ma, ma_color="orange", ma_z=2)
@@ -139,7 +150,8 @@ def plot(cfg, results):
     # Per-system individual plots
     for name in names:
         df   = results[name]
-        time = np.linspace(0, sim_us, len(df))
+        s_us, e_us = get_time_bounds(meta, name, sim_us)
+        time = np.linspace(s_us, e_us, len(df))
 
         # Time series: both lobes on same axes
         fig_s, ax_s = plt.subplots(figsize=(5, 4), constrained_layout=True)

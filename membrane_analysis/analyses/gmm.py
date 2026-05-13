@@ -143,6 +143,16 @@ def compute(cfg, stats_cfg):
     seed      = int(gmm_cfg.get("random_state", 42))
     criterion = gmm_cfg.get("best_criterion", "bic")
 
+    metadata  = {
+        "analysis_key": ANALYSIS_KEY,
+        "feature_set":  {"name": fs_name, "cfg": dict(fs_cfg)},
+        "n_components": list(n_range),
+        "covariance_type": cov_type,
+        "random_state": seed,
+        "best_criterion": criterion,
+        "system_names": list(get_system_names(cfg)),
+    }
+
     def _run():
         results = {}
         for name in get_system_names(cfg):
@@ -187,10 +197,10 @@ def compute(cfg, stats_cfg):
             results[name] = entry
 
         # Save per-system subfolders
-        save_per_system(results, outdir, ANALYSIS_KEY)
+        save_per_system(results, outdir, ANALYSIS_KEY, metadata=metadata)
         return results
 
-    return cached_compute(cache, _run, force_recompute=True)
+    return cached_compute(cache, _run, force_recompute=True, metadata=metadata)
 
 
 # ── Plots ────────────────────────────────────────────────────────────────────
@@ -243,11 +253,10 @@ def plot(cfg, stats_cfg, results):
 
         if has_angular and all("rotation_deg_mean" in c for c in clusters):
             # Load raw tilt/rotation for plots
-            import pickle
+            from membrane_analysis.core.io import load_cache_data
             tr_cache = os.path.join(get_output_dir(cfg), "tilt_rotation", "tilt_rotation.pkl")
             if os.path.exists(tr_cache):
-                with open(tr_cache, "rb") as f:
-                    tr_data = pickle.load(f)
+                tr_data = load_cache_data(tr_cache)
                 if name in tr_data:
                     tilt = tr_data[name]["tilt"]
                     rot  = tr_data[name]["rotation"]

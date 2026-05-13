@@ -194,6 +194,12 @@ After that, users reference it in `feature_sets` by its `ANALYSIS_KEY`.
 - [x] GitHub repo (hutchcha/orientation-analysis-suite)
 - [x] README.md + CLUSTERING_KINETICS.md documentation
 - [x] Track `initial_systems/` Rheb-GDP/GTP starting structures (.pdb/.psf)
+- [x] **Per-system `analysis_window`**: time-based (`start_us`/`stop_us`) sub-range
+      restriction with group-level + per-analysis `ignore_window` overrides
+- [x] Cache metadata (`_metadata` wrapper) for all analyses: stores window,
+      stride, selections, params; mismatch → auto-recompute with diff printout
+- [x] `core.io.load_cache_data` / `load_cache_metadata` / `get_time_bounds`
+      helpers; per-system time-axis bounds in all plots
 
 ---
 
