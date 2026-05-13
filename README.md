@@ -177,6 +177,20 @@ All equilibration modules produce per-system time series with raw trace + moving
 
 See [CLUSTERING_KINETICS.md](CLUSTERING_KINETICS.md) for detailed documentation of the clustering and kinetics modules.
 
+### Trajectory utilities (`traj-tools`)
+
+A separate console script for the routine "I just need to clean up this trajectory" jobs — stripping water, centering, wrapping, aligning, striding, and writing topology subsets. Built on MDAnalysis, supports any format MDAnalysis reads/writes.
+
+```bash
+# Center on protein, wrap, strip water, stride 10
+traj-tools write --top sys.psf --traj prod.dcd \
+    --select "not resname TIP3 SOD CLA" \
+    --center "protein" --wrap --stride 10 \
+    --out clean.xtc
+```
+
+See [`membrane_analysis/tools/README.md`](membrane_analysis/tools/README.md) for full subcommand and flag documentation.
+
 ## Statistical Analysis Pipeline (`--stats`)
 
 `clustering`, `gmm`, and `kinetics` can be driven by a separate `stats.yaml` config that combines arbitrary cached observables into a single feature matrix. This decouples *what data to feed into the model* from *how the model is configured*, so you can re-cluster on tilt+rotation+distance without editing the main pipeline config.
