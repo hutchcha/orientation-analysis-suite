@@ -6,6 +6,8 @@ A primary goal of this package is to be additive, meaning anyone can add analyse
 
 Designed for single or multiple system work flows, simply add multiple systems to your config file and it will output both single plots and multi-system comparison plots.
 
+This is essentially a wrapper for other open source softwares including VMD, GROMACS, MDAnalysis and others put together to facillitate quick analysis and allow others to easily use analysis scripts and work-flows I developed for my own research. 
+
 ## Installation
 
 Requires Python >= 3.10. Install via pip in editable mode:
