@@ -314,4 +314,4 @@ This pipeline was built using [Claude Code](https://claude.ai/code) (Anthropic) 
 
 ## License
 
-This project is currently private. Contact the repository owner for access.
+This project is licensed under the MIT License — see the LICENSE file for details.
